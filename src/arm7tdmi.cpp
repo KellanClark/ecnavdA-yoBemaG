@@ -1,4 +1,5 @@
 
+#include "typedefs.hpp"
 #include "arm7tdmi.hpp"
 
 namespace GBA {

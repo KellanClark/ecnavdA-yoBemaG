@@ -56,6 +56,7 @@ target_link_libraries(ecnavda-yobemag PRIVATE
 	-ldl
 	-lGL
 	-lm
+	-lpthread
 #[[	-fsanitize=address
 	-fsanitize=leak
 	-fsanitize=undefined

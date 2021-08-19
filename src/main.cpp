@@ -37,7 +37,7 @@ void biosFileDialog();
 // Everything else
 std::thread emuThread(GBA::run);
 int loadRom();
-bool updateScreen;
+volatile bool updateScreen;
 
 int main(int argc, char *argv[]) {
 	// Parse arguments
@@ -203,13 +203,10 @@ int main(int argc, char *argv[]) {
 }
 
 int loadRom() {
-	GBA::running = false;
-
 	GBA::reset();
 	if (GBA::loadRom(argRomFilePath, argBiosFilePath))
 		return -1;
 
-	GBA::running = true;
 	return 0;
 }
 
@@ -255,6 +252,24 @@ void romInfoWindow() {
 
 	ImGui::Text("ROM File:  %s\n", argRomFilePath.c_str());
 	ImGui::Text("BIOS File:  %s\n", argBiosFilePath.c_str());
+
+	ImGui::End();
+}
+
+void noBiosWindow() {
+	// Center window
+	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5, 0.5));
+	ImGui::Begin("No BIOS Selected");
+
+	ImGui::Text("You have chosen a ROM, but no BIOS.\nWould you like to start now or wait until a BIOS is selected?");
+
+	if (ImGui::Button("Wait"))
+		showNoBios = false;
+	ImGui::SameLine();
+	if (ImGui::Button("Continue")) {
+		showNoBios = false;
+		loadRom();
+	}
 
 	ImGui::End();
 }

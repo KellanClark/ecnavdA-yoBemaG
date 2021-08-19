@@ -1,4 +1,5 @@
 
+#include "typedefs.hpp"
 #include "gba.hpp"
 
 namespace GBA {

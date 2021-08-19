@@ -2,7 +2,6 @@
 #ifndef GBA_H
 #define GBA_H
 
-#include <stdint.h>
 #include <cstring>
 #include <iostream>
 #include <iterator>
@@ -14,10 +13,7 @@
 #include <unistd.h>
 #include <vector>
 
-using u8 = std::uint8_t;
-using u16 = std::uint16_t;
-using u32 = std::uint32_t;
-
+#include "typedefs.hpp"
 #include "arm7tdmi.hpp"
 
 namespace GBA {
@@ -27,7 +23,7 @@ namespace GBA {
 	int loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_);
 	void save();
 
-	bool running = false;
+	bool running;
 };
 
 #endif

@@ -2,6 +2,8 @@
 #ifndef GBA_CPU_H
 #define GBA_CPU_H
 
+#include "typedefs.hpp"
+
 namespace GBA {
 	namespace CPU {
 		void cycle();
