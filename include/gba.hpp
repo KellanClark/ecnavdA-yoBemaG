@@ -2,6 +2,7 @@
 #ifndef GBA_H
 #define GBA_H
 
+#include <array>
 #include <cstring>
 #include <iostream>
 #include <iterator>
@@ -16,7 +17,11 @@
 #include "typedefs.hpp"
 #include "arm7tdmi.hpp"
 
-namespace GBA {
+class GameBoyAdvance {
+public:
+	ARM7TDMI cpu;
+
+	GameBoyAdvance();
 	void reset();
 	void run();
 
@@ -24,6 +29,8 @@ namespace GBA {
 	void save();
 
 	bool running;
+
+private:
 };
 
 #endif

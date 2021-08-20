@@ -35,9 +35,10 @@ void romFileDialog();
 void biosFileDialog();
 
 // Everything else
-std::thread emuThread(GBA::run);
-int loadRom();
 volatile bool updateScreen;
+GameBoyAdvance GBA;
+std::thread emuThread(&GameBoyAdvance::run, GBA);
+int loadRom();
 
 int main(int argc, char *argv[]) {
 	// Parse arguments
@@ -101,7 +102,7 @@ int main(int argc, char *argv[]) {
 	window = SDL_CreateWindow(windowName.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
 	SDL_GLContext gl_context = SDL_GL_CreateContext(window);
 	SDL_GL_MakeCurrent(window, gl_context);
-	SDL_GL_SetSwapInterval(1); // Enable vsync
+	SDL_GL_SetSwapInterval(0);
 	if (gl3wInit()) {
 		printf("Failed to initialize OpenGL loader!\n");
 		return 1;
@@ -132,7 +133,7 @@ int main(int argc, char *argv[]) {
 	bool quit = false;
 	SDL_Event event;
 	while (!quit) {
-		unsigned int frameStartTicks = SDL_GetTicks();
+		//unsigned int frameStartTicks = SDL_GetTicks();
 		while (SDL_PollEvent(&event)) {
 			ImGui_ImplSDL2_ProcessEvent(&event);
 
@@ -146,7 +147,7 @@ int main(int argc, char *argv[]) {
 				if (event.key.keysym.mod & KMOD_CTRL) {
 					switch (event.key.keysym.sym) {
 					case SDLK_s:
-						GBA::save();
+						GBA.save();
 						break;
 					case SDLK_o:
 						if (event.key.keysym.mod & KMOD_SHIFT) {
@@ -199,12 +200,24 @@ int main(int argc, char *argv[]) {
 		SDL_GL_SwapWindow(window);
 	}
 
+	emuThread.detach();
+
+	// ImGui
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplSDL2_Shutdown();
+	ImGui::DestroyContext();
+
+	// SDL
+	SDL_GL_DeleteContext(gl_context);
+	SDL_DestroyWindow(window);
+	SDL_Quit();
+
 	return 0;
 }
 
 int loadRom() {
-	GBA::reset();
-	if (GBA::loadRom(argRomFilePath, argBiosFilePath))
+	GBA.reset();
+	if (GBA.loadRom(argRomFilePath, argBiosFilePath))
 		return -1;
 
 	return 0;
@@ -223,7 +236,7 @@ void mainMenuBar() {
 		}
 
 		if (ImGui::MenuItem("Save", "Ctrl+S", false, false)) {
-			GBA::save();
+			GBA.save();
 		}
 
 		ImGui::Separator();

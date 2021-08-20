@@ -36,6 +36,7 @@ add_executable(ecnavda-yobemag
 )
 
 target_compile_options(ecnavda-yobemag PRIVATE
+	-ftemplate-depth=4096
 	-MMD
 	-MP
 	-Wall

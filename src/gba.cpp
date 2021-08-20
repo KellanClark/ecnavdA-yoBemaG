@@ -1,25 +1,29 @@
 
 #include "typedefs.hpp"
+#include <array>
 #include "gba.hpp"
 
-namespace GBA {
-	void reset() {
-		running = false;
-	}
+GameBoyAdvance::GameBoyAdvance() : cpu(*this) {
+	reset();
+}
 
-	void run() {
-		if (running) {
-			//
-		}
-	}
+void GameBoyAdvance::reset() {
+	running = false;
+}
 
-	int loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_) {
-		//
-
-		return 0;
-	}
-
-	void save() {
+void GameBoyAdvance::run() {
+	cpu.cycle();
+	while (running) {
 		//
 	}
-};
+}
+
+int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_) {
+	//
+
+	return 0;
+}
+
+void GameBoyAdvance::save() {
+	//
+}
