@@ -13,8 +13,6 @@ public:
 	ARM7TDMI(GameBoyAdvance& bus_);
 	void reset();
 	void cycle();
-	void helloFunc(u32 opcode);
-	void worldFunc(u32 opcode);
 
 	struct {
 		// Normal registers
@@ -43,8 +41,28 @@ public:
 		u32 R13_und, R14_und, SPSR_und;
 	} reg;
 
+	//template <bool word> void helloWorld(u32 opcode);
+
 private:
-	// Instruction Executing
+	/* Instruction Decoding/Executing */
+	int pipelineStage;
+	u32 pipelineOpcode1; // R15
+	u32 pipelineOpcode2; // R15 + 4
+	u32 pipelineOpcode3; // R15 + 8
+	bool incrementR15;
+
+	void unknownOpcodeArm(u32 opcode);
+	inline bool checkCondition(int condtionCode);
+
+	const u32 dataProcessingMask = 0b1100'0000'0000;
+	const u32 dataProcessingBits = 0b0000'0000'0000;
+	const u32 multiplyMask = 0b1111'1100'1111;
+	const u32 multiplyBits = 0b0000'0000'1001;
+	const u32 multiplyLongMask = 0b1111'1000'1111;
+	const u32 multiplyLongBits = 0b0000'1000'1001;
+	const u32 singleDataSwapMask = 0b1111'1011'1111;
+	const u32 singleDataSwapBits = 0b0001'0000'1001;
+
 	static const std::array<void (ARM7TDMI::*)(u32), 4096> LUT;
 };
 

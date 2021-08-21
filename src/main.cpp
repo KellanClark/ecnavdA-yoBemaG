@@ -216,9 +216,11 @@ int main(int argc, char *argv[]) {
 }
 
 int loadRom() {
+	GBA.running = false;
 	GBA.reset();
 	if (GBA.loadRom(argRomFilePath, argBiosFilePath))
 		return -1;
+	GBA.running = true;
 
 	return 0;
 }

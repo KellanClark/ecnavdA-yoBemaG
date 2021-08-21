@@ -36,17 +36,17 @@ add_executable(ecnavda-yobemag
 )
 
 target_compile_options(ecnavda-yobemag PRIVATE
-	-ftemplate-depth=4096
+	-ftemplate-depth=5000
 	-MMD
 	-MP
 	-Wall
-#[[	-g
+	-g
 	-fsanitize=address
 	-fsanitize=leak
 	-fsanitize=undefined
 	-fsanitize=pointer-compare
 	-fsanitize=pointer-subtract
-	-fstack-protector-all]]
+	-fstack-protector-all
 )
 
 target_link_libraries(ecnavda-yobemag PRIVATE
@@ -58,10 +58,10 @@ target_link_libraries(ecnavda-yobemag PRIVATE
 	-lGL
 	-lm
 	-lpthread
-#[[	-fsanitize=address
+	-fsanitize=address
 	-fsanitize=leak
 	-fsanitize=undefined
 	-fsanitize=pointer-compare
 	-fsanitize=pointer-subtract
-	-fstack-protector-all]]
+	-fstack-protector-all
 )
