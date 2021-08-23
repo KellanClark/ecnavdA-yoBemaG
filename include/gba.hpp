@@ -32,7 +32,7 @@ public:
 	//u16 readHalfword(u32 address); // Address is shifted right 1 for alignment.
 	//u32 readWord(u32 address); // Address is shifted right 2 for alignment.
 
-	bool running;
+	volatile bool running;
 
 	std::vector<u8> romBuff;
 

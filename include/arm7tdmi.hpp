@@ -41,7 +41,7 @@ public:
 		u32 R13_und, R14_und, SPSR_und;
 	} reg;
 
-	//template <bool word> void helloWorld(u32 opcode);
+	template <bool word> void helloWorld(u32 opcode);
 
 private:
 	/* Instruction Decoding/Executing */
@@ -53,15 +53,6 @@ private:
 
 	void unknownOpcodeArm(u32 opcode);
 	inline bool checkCondition(int condtionCode);
-
-	const u32 dataProcessingMask = 0b1100'0000'0000;
-	const u32 dataProcessingBits = 0b0000'0000'0000;
-	const u32 multiplyMask = 0b1111'1100'1111;
-	const u32 multiplyBits = 0b0000'0000'1001;
-	const u32 multiplyLongMask = 0b1111'1000'1111;
-	const u32 multiplyLongBits = 0b0000'1000'1001;
-	const u32 singleDataSwapMask = 0b1111'1011'1111;
-	const u32 singleDataSwapBits = 0b0001'0000'1001;
 
 	static const std::array<void (ARM7TDMI::*)(u32), 4096> LUT;
 };

@@ -32,11 +32,12 @@ add_executable(ecnavda-yobemag
 	modules/imgui/imgui.cpp
 	modules/imgui/backends/imgui_impl_sdl.cpp
 	modules/imgui/backends/imgui_impl_opengl3.cpp
-	modules/imgui/examples/libs/gl3w/GL/gl3w.c
+	#modules/imgui/examples/libs/gl3w/GL/gl3w.c
 )
 
 target_compile_options(ecnavda-yobemag PRIVATE
 	-ftemplate-depth=5000
+	-fconstexpr-depth=5000
 	-MMD
 	-MP
 	-Wall

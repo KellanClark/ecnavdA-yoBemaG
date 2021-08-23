@@ -3,7 +3,8 @@
 #include "backends/imgui_impl_sdl.h"
 #include "backends/imgui_impl_opengl3.h"
 #include <SDL2/SDL.h>
-#include <GL/gl3w.h>
+#include <SDL_opengl.h>
+//#include <GL/gl3w.h>
 #include <nfd.hpp>
 
 #include "gba.hpp"
@@ -103,10 +104,10 @@ int main(int argc, char *argv[]) {
 	SDL_GLContext gl_context = SDL_GL_CreateContext(window);
 	SDL_GL_MakeCurrent(window, gl_context);
 	SDL_GL_SetSwapInterval(0);
-	if (gl3wInit()) {
+	/*if (gl3wInit()) {
 		printf("Failed to initialize OpenGL loader!\n");
 		return 1;
-	}
+	}*/
 
 	// Setup ImGui
 	IMGUI_CHECKVERSION();
@@ -216,11 +217,9 @@ int main(int argc, char *argv[]) {
 }
 
 int loadRom() {
-	GBA.running = false;
 	GBA.reset();
 	if (GBA.loadRom(argRomFilePath, argBiosFilePath))
 		return -1;
-	GBA.running = true;
 
 	return 0;
 }

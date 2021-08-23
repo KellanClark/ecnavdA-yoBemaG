@@ -12,8 +12,12 @@ void GameBoyAdvance::reset() {
 }
 
 void GameBoyAdvance::run() {
-	while (running) {
-		cpu.cycle();
+	while (1) {
+		//printf("%d\n", running);
+		if (running) {
+			printf("test\n");
+			cpu.cycle();
+		}
 	}
 }
 
@@ -25,7 +29,20 @@ std::vector<T> LoadBin(const std::filesystem::path& path) {
 }
 
 int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_) {
-	romBuff = LoadBin<u8>(romFilePath_);
+	running = false;
+	//romBuff = LoadBin<u8>(romFilePath_);
+	std::ifstream romFileStream;
+	romFileStream.open(romFilePath_, std::ios::binary);
+	if (!romFileStream.is_open()) {
+		printf("Failed to open ROM!\n");
+		return -1;
+	}
+	romFileStream.seekg(0, std::ios::end);
+	size_t romSize = romFileStream.tellg();
+	romFileStream.seekg(0, std::ios::beg);
+	romFileStream.read(reinterpret_cast<char*>(romBuff.data()), romBuff.size());
+	romFileStream.close();
+	
 	if (romBuff.size() > 0x02000000)
 		romBuff.resize(0x02000000);
 	{ // Round rom size to power of 2 https://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
@@ -47,6 +64,7 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 		}
 	}
 
+	running = true;
 	return 0;
 }
 

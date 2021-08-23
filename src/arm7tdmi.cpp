@@ -14,7 +14,7 @@ void ARM7TDMI::reset() {
 void ARM7TDMI::cycle() {
 	pipelineOpcode3 = pipelineOpcode2;
 	pipelineOpcode2 = pipelineOpcode1;
-	pipelineOpcode1 = reg.thumbMode ? bus.read<u16>(reg.R[15]) : bus.read<u32>(reg.R[15]);
+	pipelineOpcode1 = bus.read<u32>(reg.R[15]);
 
 	incrementR15 = true;
 	if (pipelineStage == 3) {
@@ -26,20 +26,20 @@ void ARM7TDMI::cycle() {
 		++pipelineStage;
 	}
 	if (incrementR15)
-		reg.R[15] += reg.thumbMode ? 2 : 4;
-	
-	(this->*LUT[0])(0);
-	(this->*LUT[1])(0);
+		reg.R[15] += 4;
+
+	//(this->*LUT[0])(0);
+	//(this->*LUT[1])(0);
 }
 
-/*template <bool word>
+template <bool word>
 void ARM7TDMI::helloWorld(u32 opcode) {
 	if (word) {
 		printf("World!\n");
 	} else {
 		printf("Hello ");
 	}
-}*/
+}
 
 /* Instruction Decoding/Executing */
 void ARM7TDMI::unknownOpcodeArm(u32 opcode) {
@@ -71,21 +71,62 @@ bool ARM7TDMI::checkCondition(int condtionCode) {
 }
 
 // Fill a Look Up Table with entries for the combinations of bits 27-20 and 7-4
-template<size_t i>
+/*template<size_t i>
 void constexpr recursive_loop(std::array<void (ARM7TDMI::*)(u32), 4096>& inLut) {
 	inLut[i] = &ARM7TDMI::unknownOpcodeArm;
-	/*if (i < 2) {
+	if (i < 2) {
 		inLut[i] = &ARM7TDMI::helloWorld<i & 1>;
-	}*/
+	}
 
-	//inlut[i] = &ARM7TDMI::whatever_function_pointer;
+	inlut[i] = &ARM7TDMI::whatever_function_pointer;
 
-	if constexpr (i < 4096)
+	if constexpr (i < 4095)
 		recursive_loop<i+1>(inLut);
 }
 
-const std::array<void (ARM7TDMI::*)(u32), 4096> ARM7TDMI::LUT = []()constexpr {
+constexpr std::array<void (ARM7TDMI::*)(u32), 4096> ARM7TDMI::LUT = []()constexpr {
 	std::array<void (ARM7TDMI::*)(u32), 4096> tmpLut = {};
 	recursive_loop<0>(tmpLut);
 	return tmpLut;
-}();
+}();*/
+
+static const u32 dataProcessingMask = 0b1100'0000'0000;
+const u32 dataProcessingBits = 0b0000'0000'0000;
+const u32 multiplyMask = 0b1111'1100'1111;
+const u32 multiplyBits = 0b0000'0000'1001;
+const u32 multiplyLongMask = 0b1111'1000'1111;
+const u32 multiplyLongBits = 0b0000'1000'1001;
+const u32 singleDataSwapMask = 0b1111'1011'1111;
+const u32 singleDataSwapBits = 0b0001'0000'1001;
+const u32 branchExchangeMask = 0b1111'1111'1111;
+const u32 branchExchangeBits = 0b0001'0010'0001;
+const u32 hwdtRegisterOffsetMask = 0b1110'0100'1001;
+const u32 hwdtRegisterOffsetBits = 0b0000'0000'1001;
+const u32 hwdtImmediateOffsetMask = 0b1110'0100'1001;
+const u32 hwdtImmediateOffsetBits = 0b0000'0100'1001;
+const u32 singleDataTransferMask = 0b1100'0000'0000;
+const u32 singleDataTransferBits = 0b0100'0000'0000;
+const u32 undefinedMask = 0b1110'0000'0001;
+const u32 undefinedBits = 0b0110'0000'0001;
+const u32 blockDataTransferMask = 0b1110'0000'0000;
+const u32 blockDataTransferBits = 0b1000'0000'0000;
+const u32 branchMask = 0b1110'0000'0000;
+const u32 branchBits = 0b1010'0000'0000;
+const u32 softwareInterruptMask = 0b1111'0000'0000;
+const u32 softwareInterruptBits = 0b1111'0000'0000;
+
+using lutEntry = void (ARM7TDMI::*)(u32);
+
+template <std::size_t lutFillIndex>
+constexpr lutEntry decode() {
+	return &ARM7TDMI::unknownOpcodeArm;
+}
+
+template <std::size_t... lutFillIndex>
+constexpr std::array<lutEntry, 4096> generate_table(std::index_sequence<lutFillIndex...>) {
+    return std::array { decode<lutFillIndex>()... };
+}
+
+constexpr std::array<lutEntry, 4096> ARM7TDMI::LUT = {
+    generate_table(std::make_index_sequence<4096>())
+};
