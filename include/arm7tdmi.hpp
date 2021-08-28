@@ -2,9 +2,6 @@
 #ifndef GBA_CPU_H
 #define GBA_CPU_H
 
-#include "typedefs.hpp"
-#include <array>
-
 class GameBoyAdvance;
 class ARM7TDMI {
 public:
@@ -13,6 +10,14 @@ public:
 	ARM7TDMI(GameBoyAdvance& bus_);
 	void reset();
 	void cycle();
+
+	std::string disassemble(u32 address, u32 opcode);
+	struct {
+		bool showALCondition;
+		bool alwaysShowSBit;
+		bool printOperandsHex;
+		bool printAddressesHex;
+	} disassemblerOptions;
 
 	struct {
 		// Normal registers
@@ -32,18 +37,16 @@ public:
 			};
 			u32 CPSR;
 		};
+		u32 SPSR;
 
 		// Banked registers for each mode
-		u32 R8_fiq, R9_fiq, R10_fiq, R11_fiq, R12_fiq, R13_fiq, R14_fiq, R15_fiq, SPSR_fiq;
+		u32 R8_fiq, R9_fiq, R10_fiq, R11_fiq, R12_fiq, R13_fiq, R14_fiq, SPSR_fiq;
 		u32 R13_svc, R14_svc, SPSR_svc;
 		u32 R13_abt, R14_abt, SPSR_abt;
 		u32 R13_irq, R14_irq, SPSR_irq;
 		u32 R13_und, R14_und, SPSR_und;
 	} reg;
 
-	template <bool word> void helloWorld(u32 opcode);
-
-private:
 	/* Instruction Decoding/Executing */
 	int pipelineStage;
 	u32 pipelineOpcode1; // R15
@@ -51,8 +54,12 @@ private:
 	u32 pipelineOpcode3; // R15 + 8
 	bool incrementR15;
 
-	void unknownOpcodeArm(u32 opcode);
 	inline bool checkCondition(int condtionCode);
+	void unknownOpcodeArm(u32 opcode, std::string message);
+	void unknownOpcodeArm(u32 opcode);
+
+	template <bool iBit, int operation, bool sBit> void dataProcessing(u32 opcode);
+	template <bool lBit> void branch(u32 opcode);
 
 	static const std::array<void (ARM7TDMI::*)(u32), 4096> LUT;
 };

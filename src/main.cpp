@@ -4,7 +4,6 @@
 #include "backends/imgui_impl_opengl3.h"
 #include <SDL2/SDL.h>
 #include <SDL_opengl.h>
-//#include <GL/gl3w.h>
 #include <nfd.hpp>
 
 #include "gba.hpp"
@@ -31,6 +30,10 @@ bool showRomInfo;
 void romInfoWindow();
 bool showNoBios;
 void noBiosWindow();
+bool showStepWarning;
+void stepWarningWindow();
+bool showCpuDebug;
+void cpuDebugWindow();
 
 void romFileDialog();
 void biosFileDialog();
@@ -38,7 +41,7 @@ void biosFileDialog();
 // Everything else
 volatile bool updateScreen;
 GameBoyAdvance GBA;
-std::thread emuThread(&GameBoyAdvance::run, GBA);
+std::thread emuThread(&GameBoyAdvance::run, std::ref(GBA));
 int loadRom();
 
 int main(int argc, char *argv[]) {
@@ -104,10 +107,6 @@ int main(int argc, char *argv[]) {
 	SDL_GLContext gl_context = SDL_GL_CreateContext(window);
 	SDL_GL_MakeCurrent(window, gl_context);
 	SDL_GL_SetSwapInterval(0);
-	/*if (gl3wInit()) {
-		printf("Failed to initialize OpenGL loader!\n");
-		return 1;
-	}*/
 
 	// Setup ImGui
 	IMGUI_CHECKVERSION();
@@ -181,6 +180,10 @@ int main(int argc, char *argv[]) {
 			romInfoWindow();
 		if (showNoBios)
 			noBiosWindow();
+		if (showStepWarning)
+			stepWarningWindow();
+		if (showCpuDebug)
+			cpuDebugWindow();
 
 		// Console Screen
 		{
@@ -247,13 +250,24 @@ void mainMenuBar() {
 	}
 
 	if (ImGui::BeginMenu("Emulation")) {
-		ImGui::MenuItem("tmp");
+		if (GBA.running) {
+			if (ImGui::MenuItem("Pause"))
+				GBA.running = false;
+		} else {
+			if (ImGui::MenuItem("Unpause")) {
+				if (GBA.step) {
+					showStepWarning = true;
+				} else {
+					GBA.running = true;
+				}
+			}
+		}
 
 		ImGui::EndMenu();
 	}
 
 	if (ImGui::BeginMenu("Debug")) {
-		ImGui::MenuItem("tmp");
+		ImGui::MenuItem("Debug CPU", NULL, &showCpuDebug);
 
 		ImGui::EndMenu();
 	}
@@ -284,6 +298,77 @@ void noBiosWindow() {
 		showNoBios = false;
 		loadRom();
 	}
+
+	ImGui::End();
+}
+
+void stepWarningWindow() {
+	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5, 0.5));
+	ImGui::Begin("CPU in Step Mode");
+
+	ImGui::Text("You are about to unpause while the system is set to step.\nDoing this would almost immediately pause the system again.\n You can disable it manually in the Debug CPU menu, disable it now, or continue anyway.");
+
+	if (ImGui::Button("Wait"))
+		showStepWarning = false;
+	ImGui::SameLine();
+	if (ImGui::Button("Disable Now")) {
+		showStepWarning = false;
+		GBA.step = false;
+		GBA.running = true;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Continue")) {
+		showStepWarning = false;
+		GBA.running = false;
+	}
+
+	ImGui::End();
+}
+
+void cpuDebugWindow() {
+	static bool shouldAutoscroll;
+
+	ImGui::Begin("Debug CPU");
+
+	if (ImGui::Button("Reset"))
+		GBA.reset();
+	
+	ImGui::Spacing();
+	ImGui::Checkbox("Step Mode", (bool *)&GBA.step);
+	if (GBA.step) {
+		if (ImGui::Button("Step"))
+			GBA.running = true;
+	}
+
+	ImGui::Text("r0:  %08X", GBA.cpu.reg.R[0]);
+	ImGui::Text("r1:  %08X", GBA.cpu.reg.R[1]);
+	ImGui::Text("r2:  %08X", GBA.cpu.reg.R[2]);
+	ImGui::Text("r3:  %08X", GBA.cpu.reg.R[3]);
+	ImGui::Text("r4:  %08X", GBA.cpu.reg.R[4]);
+	ImGui::Text("r5:  %08X", GBA.cpu.reg.R[5]);
+	ImGui::Text("r6:  %08X", GBA.cpu.reg.R[6]);
+	ImGui::Text("r7:  %08X", GBA.cpu.reg.R[7]);
+	ImGui::Text("r8:  %08X", GBA.cpu.reg.R[8]);
+	ImGui::Text("r9:  %08X", GBA.cpu.reg.R[9]);
+	ImGui::Text("r10: %08X", GBA.cpu.reg.R[10]);
+	ImGui::Text("r11: %08X", GBA.cpu.reg.R[11]);
+	ImGui::Text("r12: %08X", GBA.cpu.reg.R[12]);
+	ImGui::Text("r13: %08X", GBA.cpu.reg.R[13]);
+	ImGui::Text("r14: %08X", GBA.cpu.reg.R[14]);
+	ImGui::Text("r15: %08X", GBA.cpu.reg.R[15]);
+
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+	ImGui::Checkbox("Auto-scroll", &shouldAutoscroll);
+	ImGui::PopStyleVar();
+	ImGui::Spacing();
+	ImGui::Separator();
+
+	ImGui::BeginChild("Debug CPU", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+	//ImGui::TextUnformatted(text_contents);
+
+	if (shouldAutoscroll)
+		ImGui::SetScrollHereY(1.0f);
+	ImGui::EndChild();
 
 	ImGui::End();
 }

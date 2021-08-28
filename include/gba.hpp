@@ -3,6 +3,8 @@
 #define GBA_H
 
 #include <array>
+#include <atomic>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <iterator>
@@ -14,7 +16,17 @@
 #include <unistd.h>
 #include <vector>
 
-#include "typedefs.hpp"
+//#include <format>
+
+using i8 = std::int8_t;
+using u8 = std::uint8_t;
+using i16 = std::int16_t;
+using u16 = std::uint16_t;
+using i32 = std::int32_t;
+using u32 = std::uint32_t;
+using i64 = std::int64_t;
+using u64 = std::uint64_t;
+
 #include "arm7tdmi.hpp"
 
 class GameBoyAdvance {
@@ -29,10 +41,9 @@ public:
 	void save();
 
 	template <typename T> T read(u32 address);
-	//u16 readHalfword(u32 address); // Address is shifted right 1 for alignment.
-	//u32 readWord(u32 address); // Address is shifted right 2 for alignment.
 
-	volatile bool running;
+	std::atomic<bool> running;
+	std::atomic<bool> step;
 
 	std::vector<u8> romBuff;
 
