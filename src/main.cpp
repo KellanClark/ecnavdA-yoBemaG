@@ -26,6 +26,7 @@ GLuint lcdTexture;
 
 // ImGui Windows
 void mainMenuBar();
+bool showDemoWindow = true;
 bool showRomInfo;
 void romInfoWindow();
 bool showNoBios;
@@ -118,7 +119,6 @@ int main(int argc, char *argv[]) {
 	//ImGui::StyleColorsClassic();
 	ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
 	ImGui_ImplOpenGL3_Init(glsl_version);
-	bool showDemoWindow = true;
 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
 	// Create image for main display
@@ -250,6 +250,11 @@ void mainMenuBar() {
 	}
 
 	if (ImGui::BeginMenu("Emulation")) {
+		if (ImGui::Button("Reset")) {
+			GBA.reset();
+			GBA.running = true;
+		}
+
 		if (GBA.running) {
 			if (ImGui::MenuItem("Pause"))
 				GBA.running = false;
@@ -268,6 +273,8 @@ void mainMenuBar() {
 
 	if (ImGui::BeginMenu("Debug")) {
 		ImGui::MenuItem("Debug CPU", NULL, &showCpuDebug);
+		ImGui::Separator();
+		ImGui::MenuItem("ImGui Demo", NULL, &showDemoWindow);
 
 		ImGui::EndMenu();
 	}
@@ -328,10 +335,19 @@ void stepWarningWindow() {
 void cpuDebugWindow() {
 	static bool shouldAutoscroll;
 
+	ImGui::SetNextWindowSize(ImVec2(700, 600), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Debug CPU");
 
 	if (ImGui::Button("Reset"))
 		GBA.reset();
+	ImGui::SameLine();
+	if (GBA.running) {
+		if (ImGui::Button("Pause"))
+			GBA.running = false;
+	} else {
+		if (ImGui::Button("Unpause"))
+			GBA.running = true;
+	}
 	
 	ImGui::Spacing();
 	ImGui::Checkbox("Step Mode", (bool *)&GBA.step);
@@ -340,6 +356,10 @@ void cpuDebugWindow() {
 			GBA.running = true;
 	}
 
+	ImGui::Separator();
+	std::string tmp = GBA.cpu.disassemble(GBA.cpu.reg.R[15] - 8, GBA.cpu.pipelineOpcode3);
+	ImGui::Text("Current Opcode:  %s", tmp.c_str());
+	ImGui::Spacing();
 	ImGui::Text("r0:  %08X", GBA.cpu.reg.R[0]);
 	ImGui::Text("r1:  %08X", GBA.cpu.reg.R[1]);
 	ImGui::Text("r2:  %08X", GBA.cpu.reg.R[2]);
@@ -356,15 +376,25 @@ void cpuDebugWindow() {
 	ImGui::Text("r13: %08X", GBA.cpu.reg.R[13]);
 	ImGui::Text("r14: %08X", GBA.cpu.reg.R[14]);
 	ImGui::Text("r15: %08X", GBA.cpu.reg.R[15]);
+	ImGui::Text("CPSR: %08X", GBA.cpu.reg.CPSR);
 
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+	ImGui::Spacing();
 	ImGui::Checkbox("Auto-scroll", &shouldAutoscroll);
-	ImGui::PopStyleVar();
+	ImGui::SameLine();
+	ImGui::Checkbox("Trace Instructions", (bool *)&GBA.trace);
+
+	if (ImGui::TreeNode("Diassembler Options")) {
+		ImGui::Checkbox("Show AL Condition", (bool *)&GBA.cpu.disassemblerOptions.showALCondition);
+		ImGui::Checkbox("Always Show S Bit", (bool *)&GBA.cpu.disassemblerOptions.alwaysShowSBit);
+		ImGui::Checkbox("Show Operands in Hex", (bool *)&GBA.cpu.disassemblerOptions.printOperandsHex);
+		ImGui::Checkbox("Show Addresses in Hex", (bool *)&GBA.cpu.disassemblerOptions.printAddressesHex);
+	}
+
 	ImGui::Spacing();
 	ImGui::Separator();
 
 	ImGui::BeginChild("Debug CPU", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
-	//ImGui::TextUnformatted(text_contents);
+	ImGui::TextUnformatted(GBA.log.str().c_str());
 
 	if (shouldAutoscroll)
 		ImGui::SetScrollHereY(1.0f);

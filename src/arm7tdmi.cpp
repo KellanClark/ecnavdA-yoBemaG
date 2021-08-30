@@ -11,7 +11,8 @@ ARM7TDMI::ARM7TDMI(GameBoyAdvance& bus_) : bus(bus_) {
 }
 
 void ARM7TDMI::reset() {
-	pipelineStage = 1;
+	pipelineStage = 0;
+	incrementR15 = false;
 
 	for (int i = 0; i < 15; i++)
 		reg.R[i] = 0;
@@ -28,25 +29,22 @@ void ARM7TDMI::reset() {
 }
 
 void ARM7TDMI::cycle() {
-	pipelineOpcode3 = pipelineOpcode2;
-	pipelineOpcode2 = pipelineOpcode1;
-	pipelineOpcode1 = bus.read<u32>(reg.R[15]);
-
-	incrementR15 = true;
 	if (pipelineStage == 3) {
 		if (checkCondition(pipelineOpcode3 >> 28)) {
-			std::string tmp = disassemble(reg.R[15] - 8, pipelineOpcode3);
-			//std::cout << std::format("0x{:0>8X} | 0x{:0>8X} | {}\n", reg.R[15] - 8, pipelineOpcode3, tmp.c_str());
-			printf("0x%08X | 0x%08X | %s\n", reg.R[15] - 8, pipelineOpcode3, tmp.c_str());
-
 			u32 lutIndex = ((pipelineOpcode3 & 0x0FF00000) >> 16) | ((pipelineOpcode3 & 0x000000F0) >> 4);
 			(this->*LUT[lutIndex])(pipelineOpcode3);
 		}
 	} else {
 		++pipelineStage;
 	}
+
 	if (incrementR15)
 		reg.R[15] += 4;
+	incrementR15 = true;
+
+	pipelineOpcode3 = pipelineOpcode2;
+	pipelineOpcode2 = pipelineOpcode1;
+	pipelineOpcode1 = bus.read<u32>(reg.R[15]);
 }
 
 bool ARM7TDMI::checkCondition(int condtionCode) {
@@ -83,10 +81,8 @@ static const u32 armSingleDataSwapMask = 0b1111'1011'1111;
 static const u32 armSingleDataSwapBits = 0b0001'0000'1001;
 static const u32 armBranchExchangeMask = 0b1111'1111'1111;
 static const u32 armBranchExchangeBits = 0b0001'0010'0001;
-static const u32 armHwdtRegisterOffsetMask = 0b1110'0100'1001;
-static const u32 armHwdtRegisterOffsetBits = 0b0000'0000'1001;
-static const u32 armHwdtImmediateOffsetMask = 0b1110'0100'1001;
-static const u32 armHwdtImmediateOffsetBits = 0b0000'0100'1001;
+static const u32 armHalfwordDataTransferMask = 0b1110'0000'1001;
+static const u32 armHalfwordDataTransferBits = 0b0000'0000'1001;
 static const u32 armSingleDataTransferMask = 0b1100'0000'0000;
 static const u32 armSingleDataTransferBits = 0b0100'0000'0000;
 static const u32 armUndefinedMask = 0b1110'0000'0001;
@@ -140,8 +136,7 @@ std::string ARM7TDMI::disassemble(u32 address, u32 opcode) {
 
 		return disassembledOpcode.str();
 	} else if ((lutIndex & armDataProcessingMask) == armDataProcessingBits) {
-		//bool iBit = lutIndex & 0b0010'0000'0000;
-		bool iBit = opcode & (1 << 25);
+		bool iBit = lutIndex & 0b0010'0000'0000;
 		auto operation = (lutIndex & 0b0001'1110'0000) >> 5;
 		bool sBit = lutIndex & 0b0000'0001'0000;
 
@@ -226,13 +221,13 @@ std::string ARM7TDMI::disassemble(u32 address, u32 opcode) {
 	return "Undefined";
 }
 
-void ARM7TDMI::unknownOpcodeArm(u32 opcode, std::string message) {
-	bus.running = false;
-	printf("Unknown opcode 0x%08X at address 0x%08X  Message: %s\n", opcode, reg.R[15] - 8, message.c_str());
-}
-
 void ARM7TDMI::unknownOpcodeArm(u32 opcode) {
 	unknownOpcodeArm(opcode, "No LUT entry");
+}
+
+void ARM7TDMI::unknownOpcodeArm(u32 opcode, std::string message) {
+	bus.running = false;
+	bus.log << fmt::format("Unknown opcode 0x{:0>8X} at address 0x{:0>8X}  Message: {}\n", opcode, reg.R[15] - 8, message.c_str());
 }
 
 template <bool iBit, int operation, bool sBit>
@@ -291,7 +286,7 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 			break;
 		default:
 			unknownOpcodeArm(opcode, "Shift type");
-			break;
+			return;
 		}
 	}
 
@@ -316,7 +311,7 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 		break;
 	default:
 		unknownOpcodeArm(opcode, "Operation");
-		break;
+		return;
 	}
 	reg.R[destinationReg] = result;
 
@@ -331,6 +326,13 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 			reg.flagV = operationOverflow;
 		}
 	}
+}
+
+template <bool prePostIndex, bool upDown, bool immediateOffset, bool writeBack, bool loadStore, bool sBit, bool hBit>
+void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
+	//
+
+	unknownOpcodeArm(opcode);
 }
 
 template <bool lBit>
@@ -349,6 +351,8 @@ template <std::size_t lutFillIndex>
 constexpr lutEntry decode() {
 	if ((lutFillIndex & armBranchMask) == armBranchBits) {
 		return &ARM7TDMI::branch<(bool)(lutFillIndex & 0b0001'0000'0000)>;
+	} else if ((lutFillIndex & armHalfwordDataTransferMask) == armHalfwordDataTransferBits) {
+		return &ARM7TDMI::halfwordDataTransfer<(bool)(lutFillIndex & 0b0001'0000'0000), (bool)(lutFillIndex & 0b0000'1000'0000), (bool)(lutFillIndex & 0b0000'0100'0000), (bool)(lutFillIndex & 0b0000'0010'0000), (bool)(lutFillIndex & 0b0000'0001'0000), (bool)(lutFillIndex & 0b0000'0000'0100), (bool)(lutFillIndex & 0b0000'0000'0010)>;
 	} else if ((lutFillIndex & armDataProcessingMask) == armDataProcessingBits) {
 		return &ARM7TDMI::dataProcessing<(bool)(lutFillIndex & 0b0010'0000'0000), ((lutFillIndex & 0b0001'1110'0000) >> 5), (bool)(lutFillIndex & 0b0000'0001'0000)>;
 	}

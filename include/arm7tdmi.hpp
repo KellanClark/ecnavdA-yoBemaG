@@ -55,10 +55,11 @@ public:
 	bool incrementR15;
 
 	inline bool checkCondition(int condtionCode);
-	void unknownOpcodeArm(u32 opcode, std::string message);
 	void unknownOpcodeArm(u32 opcode);
+	void unknownOpcodeArm(u32 opcode, std::string message);
 
 	template <bool iBit, int operation, bool sBit> void dataProcessing(u32 opcode);
+	template <bool prePostIndex, bool upDown, bool immediateOffset, bool writeBack, bool loadStore, bool sBit, bool hBit> void halfwordDataTransfer(u32 opcode);
 	template <bool lBit> void branch(u32 opcode);
 
 	static const std::array<void (ARM7TDMI::*)(u32), 4096> LUT;

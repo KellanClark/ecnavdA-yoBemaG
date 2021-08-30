@@ -4,3 +4,6 @@
 [submodule "modules/nativefiledialog-extended"]
 	path = modules/nativefiledialog-extended
 	url = https://github.com/StrikerX3/nativefiledialog-extended.git
+[submodule "modules/fmt"]
+	path = modules/fmt
+	url = https://github.com/fmtlib/fmt.git

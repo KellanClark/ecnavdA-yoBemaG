@@ -3,37 +3,38 @@
 
 GameBoyAdvance::GameBoyAdvance() : cpu(*this) {
 	step = false;
+	trace = true;
 
 	reset();
 }
 
 void GameBoyAdvance::reset() {
 	running = false;
+	log.str("");
 
 	cpu.reset();
+
+	if (step)
+		running = true;
 }
 
 void GameBoyAdvance::run() {
 	while (1) {
 		if (running) {
+			if (trace && (cpu.pipelineStage == 3)) {
+				std::string tmp = cpu.disassemble(cpu.reg.R[15] - 8, cpu.pipelineOpcode3);
+				log << fmt::format("0x{:0>8X} | 0x{:0>8X} | {}\n", cpu.reg.R[15] - 8, cpu.pipelineOpcode3, tmp.c_str());
+			}
 			cpu.cycle();
 
-			if (step)
+			if (step && (cpu.pipelineStage == 3))
 				running = false;
 		}
 	}
 }
 
-// Stolen from emudev Discord
-template <typename T>
-std::vector<T> LoadBin(const std::filesystem::path& path) {
-	std::basic_ifstream<T> file{path, std::ios::binary};
-	return {std::istreambuf_iterator<T>{file}, {}};
-}
-
 int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_) {
 	running = false;
-	//romBuff = LoadBin<u8>(romFilePath_);
 	std::ifstream romFileStream;
 	romFileStream.open(romFilePath_, std::ios::binary);
 	if (!romFileStream.is_open()) {

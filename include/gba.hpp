@@ -17,6 +17,7 @@
 #include <vector>
 
 //#include <format>
+#include <fmt/core.h>
 
 using i8 = std::int8_t;
 using u8 = std::uint8_t;
@@ -44,6 +45,8 @@ public:
 
 	std::atomic<bool> running;
 	std::atomic<bool> step;
+	std::atomic<bool> trace;
+	std::stringstream log;
 
 	std::vector<u8> romBuff;
 

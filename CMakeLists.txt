@@ -12,6 +12,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 find_package(SDL2 REQUIRED)
 
 add_subdirectory(modules/nativefiledialog-extended)
+add_subdirectory(modules/fmt)
 
 include_directories(
 	${PROJECT_SOURCE_DIR}/include/
@@ -21,10 +22,6 @@ include_directories(
 )
 
 add_executable(ecnavda-yobemag
-	src/main.cpp
-	src/gba.cpp
-	src/arm7tdmi.cpp
-
 	modules/imgui/imgui_draw.cpp
 	modules/imgui/imgui_demo.cpp
 	modules/imgui/imgui_tables.cpp
@@ -32,7 +29,10 @@ add_executable(ecnavda-yobemag
 	modules/imgui/imgui.cpp
 	modules/imgui/backends/imgui_impl_sdl.cpp
 	modules/imgui/backends/imgui_impl_opengl3.cpp
-	#modules/imgui/examples/libs/gl3w/GL/gl3w.c
+
+	src/main.cpp
+	src/gba.cpp
+	src/arm7tdmi.cpp
 )
 
 target_compile_options(ecnavda-yobemag PRIVATE
@@ -53,6 +53,7 @@ target_compile_options(ecnavda-yobemag PRIVATE
 target_link_libraries(ecnavda-yobemag PRIVATE
 	${SDL2_LIBRARIES}
 	nfd
+	fmt
 	-lstdc++
 	-lSDL2
 	-ldl
