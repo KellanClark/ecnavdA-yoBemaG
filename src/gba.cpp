@@ -1,11 +1,21 @@
 
 #include "gba.hpp"
 
-GameBoyAdvance::GameBoyAdvance() : cpu(*this) {
+#define toPage(x) (x >> 15)
+
+GameBoyAdvance::GameBoyAdvance() : cpu(*this), ppu(*this) {
 	step = false;
 	trace = true;
 
+	for (int i = toPage(0x6000000); i < toPage(0x6018000); i++) {
+		pageTableRead[i] = pageTableWrite[i] = &ppu.vram[(i - toPage(0x6000000)) << 15];
+	}
+
 	reset();
+}
+
+GameBoyAdvance::~GameBoyAdvance() {
+	save();
 }
 
 void GameBoyAdvance::reset() {
@@ -13,6 +23,7 @@ void GameBoyAdvance::reset() {
 	log.str("");
 
 	cpu.reset();
+	ppu.reset();
 
 	if (step)
 		running = true;
@@ -22,10 +33,15 @@ void GameBoyAdvance::run() {
 	while (1) {
 		if (running) {
 			if (trace && (cpu.pipelineStage == 3)) {
-				std::string tmp = cpu.disassemble(cpu.reg.R[15] - 8, cpu.pipelineOpcode3);
-				log << fmt::format("0x{:0>8X} | 0x{:0>8X} | {}\n", cpu.reg.R[15] - 8, cpu.pipelineOpcode3, tmp.c_str());
+				std::string disasm = cpu.disassemble(cpu.reg.R[15] - 8, cpu.pipelineOpcode3);
+				std::string logLine = fmt::format("0x{:0>8X} | 0x{:0>8X} | {}\n", cpu.reg.R[15] - 8, cpu.pipelineOpcode3, disasm);
+				if (logLine.compare(previousLogLine)) {
+					log << logLine;
+					previousLogLine = logLine;
+				}
 			}
 			cpu.cycle();
+			ppu.cycle();
 
 			if (step && (cpu.pipelineStage == 3))
 				running = false;
@@ -48,7 +64,7 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	romFileStream.read(reinterpret_cast<char *>(romBuff.data()), romSize);
 	romFileStream.close();
 	
-	romBuff.resize(0x02000000);
+	romBuff.resize(0x2000000);
 	{ // Round rom size to power of 2 https://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
 		u32 v = romSize - 1;
 		v |= v >> 1;
@@ -77,7 +93,9 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 }
 
 void GameBoyAdvance::save() {
-	//
+	/*std::ofstream saveFileStream{"vram.bin", std::ios::binary | std::ios::trunc};
+	saveFileStream.write(reinterpret_cast<const char*>(ppu.vram), sizeof(ppu.vram));
+	saveFileStream.close();*/
 }
 
 template <typename T>
@@ -88,17 +106,44 @@ T GameBoyAdvance::read(u32 address) {
 
 	if (pointer != NULL) {
 		T val;
-		std::memcpy (&val, (pointer + offset), sizeof(T));
+		std::memcpy(&val, (pointer + offset), sizeof(T));
 		return val;
 	} else {
 		switch (page) {
-		default:
-			return 0;
+		case toPage(0x04000000): // I/O
+			switch (offset) {
+			case 0x000 ... 0x056: // PPU
+				return ppu.readIO<T>(address);
+			}
+			break;
 		}
 	}
 
 	return 0;
 }
-
 template u16 GameBoyAdvance::read<u16>(u32);
 template u32 GameBoyAdvance::read<u32>(u32);
+
+template <typename T>
+void GameBoyAdvance::write(u32 address, T value) {
+	int page = (address & 0x0FFFFFFF) >> 15;
+	int offset = address & 0x7FFF;
+	void *pointer = pageTableWrite[page];
+
+	if (pointer != NULL) {
+		std::memcpy((pointer + offset), &value, sizeof(T));
+	} else {
+		switch (page) {
+		case toPage(0x04000000): // I/O
+			switch (offset) {
+			case 0x000 ... 0x056: // PPU
+				ppu.writeIO<T>(address, value);
+				break;
+			}
+			break;
+		}
+	}
+}
+template void GameBoyAdvance::write<u8>(u32, u8);
+template void GameBoyAdvance::write<u16>(u32, u16);
+template void GameBoyAdvance::write<u32>(u32, u32);

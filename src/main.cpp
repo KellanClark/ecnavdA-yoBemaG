@@ -21,7 +21,6 @@ constexpr auto cexprHash(const char *str, std::size_t v = 0) noexcept -> std::si
 
 // Graphics
 SDL_Window* window;
-uint32_t pixels[240 * 160];
 GLuint lcdTexture;
 
 // ImGui Windows
@@ -40,7 +39,6 @@ void romFileDialog();
 void biosFileDialog();
 
 // Everything else
-volatile bool updateScreen;
 GameBoyAdvance GBA;
 std::thread emuThread(&GameBoyAdvance::run, std::ref(GBA));
 int loadRom();
@@ -128,7 +126,6 @@ int main(int argc, char *argv[]) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	memset(pixels, 0, sizeof(pixels));
 
 	bool quit = false;
 	SDL_Event event;
@@ -162,9 +159,10 @@ int main(int argc, char *argv[]) {
 			}
 		}
 
-		if (updateScreen) {
+		if (GBA.ppu.updateScreen) {
 			glBindTexture(GL_TEXTURE_2D, lcdTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 240, 160, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, pixels);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 240, 160, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GBA.ppu.framebuffer);
+			GBA.ppu.updateScreen = false;
 		}
 
 		/* Draw ImGui Stuff */
@@ -190,7 +188,7 @@ int main(int argc, char *argv[]) {
 			ImGui::Begin("Game Boy Advance Screen");
 
 			ImGui::Text("%.1f FPS", io.Framerate);
-			ImGui::Image((void*)(intptr_t)lcdTexture, ImVec2(240 * 2, 160 * 2));
+			ImGui::Image((void*)(intptr_t)lcdTexture, ImVec2(240 * 3, 160 * 3));
 
 			ImGui::End();
 		}
@@ -250,7 +248,7 @@ void mainMenuBar() {
 	}
 
 	if (ImGui::BeginMenu("Emulation")) {
-		if (ImGui::Button("Reset")) {
+		if (ImGui::MenuItem("Reset")) {
 			GBA.reset();
 			GBA.running = true;
 		}
@@ -326,7 +324,7 @@ void stepWarningWindow() {
 	ImGui::SameLine();
 	if (ImGui::Button("Continue")) {
 		showStepWarning = false;
-		GBA.running = false;
+		GBA.running = true;
 	}
 
 	ImGui::End();
@@ -382,6 +380,13 @@ void cpuDebugWindow() {
 	ImGui::Checkbox("Auto-scroll", &shouldAutoscroll);
 	ImGui::SameLine();
 	ImGui::Checkbox("Trace Instructions", (bool *)&GBA.trace);
+	ImGui::SameLine();
+	if (ImGui::Button("Save Log")) {
+		std::ofstream logFileStream{"log", std::ios::trunc};
+		//logFileStream.write(reinterpret_cast<const char*>(ppu.vram), sizeof(ppu.vram));
+		logFileStream << GBA.log.str();
+		logFileStream.close();
+	}
 
 	if (ImGui::TreeNode("Diassembler Options")) {
 		ImGui::Checkbox("Show AL Condition", (bool *)&GBA.cpu.disassemblerOptions.showALCondition);
@@ -393,12 +398,13 @@ void cpuDebugWindow() {
 	ImGui::Spacing();
 	ImGui::Separator();
 
-	ImGui::BeginChild("Debug CPU", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
-	ImGui::TextUnformatted(GBA.log.str().c_str());
-
-	if (shouldAutoscroll)
-		ImGui::SetScrollHereY(1.0f);
-	ImGui::EndChild();
+	if (ImGui::TreeNode("Log")) {
+		ImGui::BeginChild("Debug CPU", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+		ImGui::TextUnformatted(GBA.log.str().c_str());
+		if (shouldAutoscroll)
+			ImGui::SetScrollHereY(1.0f);
+		ImGui::EndChild();
+	}
 
 	ImGui::End();
 }

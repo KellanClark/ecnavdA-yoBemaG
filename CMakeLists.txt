@@ -33,11 +33,13 @@ add_executable(ecnavda-yobemag
 	src/main.cpp
 	src/gba.cpp
 	src/arm7tdmi.cpp
+	src/ppu.cpp
 )
 
 target_compile_options(ecnavda-yobemag PRIVATE
 	-ftemplate-depth=5000
 	-fconstexpr-depth=5000
+	-Wno-pointer-arith
 	-MMD
 	-MP
 	-Wall

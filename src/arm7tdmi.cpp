@@ -119,20 +119,52 @@ std::string ARM7TDMI::disassemble(u32 address, u32 opcode) {
 	}
 
 	u32 lutIndex = ((opcode & 0x0FF00000) >> 16) | ((opcode & 0x000000F0) >> 4);
-	if ((lutIndex & armBranchMask) == armBranchBits) {
-		if (lutIndex & 0b0001'0000'0000) {
-			disassembledOpcode << "BL";
-		} else {
-			disassembledOpcode << "B";
-		}
-		disassembledOpcode << condtionCode;
+	if ((lutIndex & armHalfwordDataTransferMask) == armHalfwordDataTransferBits) {
+		bool prePostIndex = lutIndex & 0b0001'0000'0000;
+		bool upDown = lutIndex & 0b0000'1000'0000;
+		bool immediateOffset = lutIndex & 0b0000'0100'0000;
+		bool writeBack = lutIndex & 0b0000'0010'0000;
+		bool loadStore = lutIndex & 0b0000'0001'0000;
+		int shBits = (lutIndex & 0b0000'0000'0110) >> 1;
 
-		u32 jumpLocation = address + (((i32)((opcode & 0x00FFFFFF) << 8)) >> 6) + 8;
-		if (disassemblerOptions.printAddressesHex) {
-			disassembledOpcode << " $" << std::hex << jumpLocation;
-		} else {
-			disassembledOpcode << " #" << jumpLocation;
+		disassembledOpcode << (loadStore ? "LDR" : "STR") << condtionCode;
+		switch (shBits) {
+		case 0:
+			return "Undefined";
+		case 1:
+			disassembledOpcode << "H";
+			break;
+		case 2:
+			disassembledOpcode << "SB";
+			break;
+		case 3:
+			disassembledOpcode << "SH";
+			break;
 		}
+
+		disassembledOpcode << " r" << ((opcode >> 12) & 0xF) << ", [r" << ((opcode >> 16) & 0xF);
+
+		u32 offset;
+		if (immediateOffset) {
+			offset = ((opcode & 0xF00) >> 4) | (opcode & 0xF);
+			if (offset == 0) {
+				disassembledOpcode << "]";
+				return disassembledOpcode.str();
+			}
+		}
+
+		if (!prePostIndex)
+			disassembledOpcode << "]";
+		disassembledOpcode << ", ";
+
+		if (immediateOffset) {
+			disassembledOpcode << (upDown ? "#" : "#-") << offset;
+		} else {
+			disassembledOpcode << (upDown ? "+r" : "-r") << (opcode & 0xF);
+		}
+
+		if (prePostIndex)
+			disassembledOpcode << "]" << (writeBack ? "!" : "");
 
 		return disassembledOpcode.str();
 	} else if ((lutIndex & armDataProcessingMask) == armDataProcessingBits) {
@@ -168,34 +200,37 @@ std::string ARM7TDMI::disassemble(u32 address, u32 opcode) {
 			disassembledOpcode << "r" << (((0xF << 12) & opcode) >> 12) << ", ";
 		if (printRn)
 			disassembledOpcode << "r" << (((0xF << 16) & opcode) >> 16) << ", ";
-
+		
 		if (iBit) {
 			u32 shiftAmount = (opcode & (0xF << 8)) >> 7;
 			u32 shiftInput = opcode & 0xFF;
 			shiftInput = shiftAmount ? ((shiftInput >> shiftAmount) | (shiftInput << (32 - shiftAmount))) : shiftInput;
 			if (disassemblerOptions.printOperandsHex) {
-				disassembledOpcode << "$" << std::hex << shiftInput;
+				disassembledOpcode << "#0x" << std::hex << shiftInput;
 			} else {
 				disassembledOpcode << "#" << shiftInput;
 			}
 		} else {
-			disassembledOpcode << "r" << (opcode & 0xF) << ", ";
+			disassembledOpcode << "r" << (opcode & 0xF);
+
+			if ((opcode & 0xFF0) == 0) // LSL #0
+				return disassembledOpcode.str();
 			
 			switch ((opcode & (3 << 5)) >> 5) {
 			case 0:
-				disassembledOpcode << "LSL ";
+				disassembledOpcode << ", LSL ";
 				break;
 			case 1:
-				disassembledOpcode << "LSR ";
+				disassembledOpcode << ", LSR ";
 				break;
 			case 2:
-				disassembledOpcode << "ASR ";
+				disassembledOpcode << ", ASR ";
 				break;
 			case 3:
 				if (!(opcode & (1 << 4)) && (((opcode & (0x1F << 7)) >> 7) == 0)) {
-					disassembledOpcode << "RRX ";
+					disassembledOpcode << ", RRX ";
 				} else {
-					disassembledOpcode << "ROR ";
+					disassembledOpcode << ", ROR ";
 				}
 				break;
 			}
@@ -207,12 +242,24 @@ std::string ARM7TDMI::disassemble(u32 address, u32 opcode) {
 				if ((shiftAmount == 0) && ((opcode & (3 << 5)) != 0))
 					shiftAmount = 32;
 
-				if (disassemblerOptions.printOperandsHex) {
-					disassembledOpcode << "$" << std::hex << shiftAmount;
-				} else {
-					disassembledOpcode << "#" << shiftAmount;
-				}
+				disassembledOpcode << "#" << shiftAmount;
 			}
+		}
+
+		return disassembledOpcode.str();
+	} else if ((lutIndex & armBranchMask) == armBranchBits) {
+		if (lutIndex & 0b0001'0000'0000) {
+			disassembledOpcode << "BL";
+		} else {
+			disassembledOpcode << "B";
+		}
+		disassembledOpcode << condtionCode;
+
+		u32 jumpLocation = address + (((i32)((opcode & 0x00FFFFFF) << 8)) >> 6) + 8;
+		if (disassemblerOptions.printAddressesHex) {
+			disassembledOpcode << " #0x" << std::hex << jumpLocation;
+		} else {
+			disassembledOpcode << " #" << jumpLocation;
 		}
 
 		return disassembledOpcode.str();
@@ -248,7 +295,7 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 		}
 	} else {
 		operand2 = reg.R[opcode & 0xF];
-		shiftAmount = (opcode & (1 << 4)) ? (reg.R[(opcode & (0xF << 8)) >> 8] & 0xFF) : ((opcode & (0x1F << 7)) >> 7);
+		shiftAmount = (opcode & (1 << 4)) ? (reg.R[(opcode >> 8) & 0xF] & 0xFF) : ((opcode & (0x1F << 7)) >> 7);
 		switch ((opcode & (3 << 5)) >> 5) {
 		case 0: // LSL
 			if (shiftAmount != 0) {
@@ -298,26 +345,76 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 	if (destinationReg == 15)
 		unknownOpcodeArm(opcode, "r15 as destination");
 	switch (operation) {
+	case 0x0: // AND
+		result = operand1 & operand2;
+		break;
+	case 0x1: // EOR
+		result = operand1 ^ operand2;
+		break;
+	case 0x2: // SUB
+		operationCarry = operand1 >= operand2;
+		result = operand1 - operand2;
+		operationOverflow = ((operand1 ^ operand2) & (operand1 & result)) >> 31;
+		break;
+	case 0x3: // RSB
+		operationCarry = operand2 >= operand1;
+		result = operand2 - operand1;
+		operationOverflow = ((operand2 ^ operand1) & (operand2 & result)) >> 31;
 	case 0x4: // ADD
-		operationOverflow = ((operand1 & 0x7FFFFFFF) + (operand2 & 0x7FFFFFFF)) > 0x7FFFFFFF;
-		operationCarry = (((u64)operand1) + ((u64)operand2)) > 0xFFFFFFFF;
+		operationOverflow = ((operand1 & 0x7FFFFFFF) + (operand2 & 0x7FFFFFFF)) >> 31;
+		operationCarry = ((u64)operand1 + (u64)operand2) >> 32;
 		result = operand1 + operand2;
+		break;
+	case 0x5: // ADC
+		operationOverflow = ((operand1 & 0x7FFFFFFF) + (operand2 & 0x7FFFFFFF) + reg.flagC) >> 31;
+		operationCarry = ((u64)operand1 + (u64)operand2 + reg.flagC) >> 32;
+		result = operand1 + operand2 + reg.flagC;
+		break;
+	case 0x6: // SBC
+		operationCarry = (u64)operand1 >= ((u64)operand2 + !reg.flagC);
+		result = (u64)operand1 - ((u64)operand2 + !reg.flagC);
+		operationOverflow = ((operand1 ^ operand2) & (operand1 & result)) >> 31;
+		break;
+	case 0x7: // RSC
+		operationCarry = (u64)operand2 >= ((u64)operand2 + !reg.flagC);
+		result = (u64)operand2 - ((u64)operand1 + !reg.flagC);
+		operationOverflow = ((operand2 ^ operand1) & (operand2 & result)) >> 31;
+		break;
+	case 0x8: // TST
+		result = operand1 & operand2;
+		break;
+	case 0x9: // TEQ
+		result = operand1 ^ operand2;
+		break;
+	case 0xA: // CMP
+		operationCarry = operand1 >= operand2;
+		result = operand1 - operand2;
+		operationOverflow = ((operand1 ^ operand2) & (operand1 & result)) >> 31;
+		break;
+	case 0xB: // CMN
+		operationOverflow = ((operand1 & 0x7FFFFFFF) + (operand2 & 0x7FFFFFFF)) >> 31;
+		operationCarry = ((u64)operand1 + (u64)operand2) >> 32;
+		result = operand1 + operand2;
+		break;
+	case 0xC: // ORR
+		result = operand1 | operand2;
 		break;
 	case 0xD: // MOV
 		result = operand2;
 		break;
+	case 0xE: // BIC
+		result = operand1 & (~operand2);
+		break;
 	case 0xF: // MVN
 		result = ~operand2;
 		break;
-	default:
-		unknownOpcodeArm(opcode, "Operation");
-		return;
 	}
-	reg.R[destinationReg] = result;
+	if ((operation < 8) || (operation > 0xC))
+		reg.R[destinationReg] = result;
 
 	// Compute common flags
 	if (sBit) {
-		reg.flagN = (bool)(result & (1 << 31)); 
+		reg.flagN = result >> 31; 
 		reg.flagZ = result == 0;
 		if ((operation < 2) || (operation == 8) || (operation == 9) || (operation >= 0xC)) { // Logical operations
 			reg.flagC = shifterCarry;
@@ -328,11 +425,59 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 	}
 }
 
-template <bool prePostIndex, bool upDown, bool immediateOffset, bool writeBack, bool loadStore, bool sBit, bool hBit>
+template <bool prePostIndex, bool upDown, bool immediateOffset, bool writeBack, bool loadStore, int shBits>
 void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
-	//
+	auto baseRegister = (opcode >> 16) & 0xF;
+	auto srcDestRegister = (opcode >> 12) & 0xF;
+	if ((baseRegister == 15) || (srcDestRegister == 15))
+		unknownOpcodeArm(opcode, "r15 Operand");
 
-	unknownOpcodeArm(opcode);
+	u32 offset;
+	if (immediateOffset) {
+		offset = ((opcode & 0xF00) >> 4) | (opcode & 0xF);
+	} else {
+		offset = reg.R[opcode & 0xF];
+	}
+
+	u32 address = reg.R[baseRegister];
+	if (prePostIndex) {
+		if (upDown) {
+			address += offset;
+		} else {
+			address -= offset;
+		}
+	}
+
+	if (loadStore) {
+		switch (shBits) {
+		case 1:
+			reg.R[srcDestRegister] = bus.read<u16>(address & ~1);
+			break;
+		default:
+			unknownOpcodeArm(opcode, "SH Bits");
+			return;
+		}
+	} else {
+		switch (shBits) {
+		case 1:
+			bus.write<u16>(address & ~1, (u16)reg.R[srcDestRegister]);
+			break;
+		default:
+			unknownOpcodeArm(opcode, "SH Bits");
+			return;
+		}
+	}
+
+	if (!prePostIndex) {
+		if (upDown) {
+			address += offset;
+		} else {
+			address -= offset;
+		}
+	}
+	if (writeBack || !prePostIndex) {
+		reg.R[baseRegister] = address;
+	}
 }
 
 template <bool lBit>
@@ -349,12 +494,20 @@ using lutEntry = void (ARM7TDMI::*)(u32);
 
 template <std::size_t lutFillIndex>
 constexpr lutEntry decode() {
-	if ((lutFillIndex & armBranchMask) == armBranchBits) {
-		return &ARM7TDMI::branch<(bool)(lutFillIndex & 0b0001'0000'0000)>;
+	if ((lutFillIndex & armMultiplyMask) == armMultiplyBits) {
+		return &ARM7TDMI::unknownOpcodeArm;
+	} else if ((lutFillIndex & armMultiplyLongMask) == armMultiplyLongBits) {
+		return &ARM7TDMI::unknownOpcodeArm;
+	} else if ((lutFillIndex & armSingleDataSwapMask) == armSingleDataTransferBits) {
+		return &ARM7TDMI::unknownOpcodeArm;
+	} else if ((lutFillIndex & armBranchExchangeMask) == armBranchExchangeBits) {
+		return &ARM7TDMI::unknownOpcodeArm;
 	} else if ((lutFillIndex & armHalfwordDataTransferMask) == armHalfwordDataTransferBits) {
-		return &ARM7TDMI::halfwordDataTransfer<(bool)(lutFillIndex & 0b0001'0000'0000), (bool)(lutFillIndex & 0b0000'1000'0000), (bool)(lutFillIndex & 0b0000'0100'0000), (bool)(lutFillIndex & 0b0000'0010'0000), (bool)(lutFillIndex & 0b0000'0001'0000), (bool)(lutFillIndex & 0b0000'0000'0100), (bool)(lutFillIndex & 0b0000'0000'0010)>;
+		return &ARM7TDMI::halfwordDataTransfer<(bool)(lutFillIndex & 0b0001'0000'0000), (bool)(lutFillIndex & 0b0000'1000'0000), (bool)(lutFillIndex & 0b0000'0100'0000), (bool)(lutFillIndex & 0b0000'0010'0000), (bool)(lutFillIndex & 0b0000'0001'0000), ((lutFillIndex & 0b0000'0000'0110) >> 1)>;
 	} else if ((lutFillIndex & armDataProcessingMask) == armDataProcessingBits) {
 		return &ARM7TDMI::dataProcessing<(bool)(lutFillIndex & 0b0010'0000'0000), ((lutFillIndex & 0b0001'1110'0000) >> 5), (bool)(lutFillIndex & 0b0000'0001'0000)>;
+	} else if ((lutFillIndex & armBranchMask) == armBranchBits) {
+		return &ARM7TDMI::branch<(bool)(lutFillIndex & 0b0001'0000'0000)>;
 	}
 
 	return &ARM7TDMI::unknownOpcodeArm;

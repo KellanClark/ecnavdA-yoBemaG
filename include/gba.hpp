@@ -16,7 +16,6 @@
 #include <unistd.h>
 #include <vector>
 
-//#include <format>
 #include <fmt/core.h>
 
 using i8 = std::int8_t;
@@ -29,12 +28,15 @@ using i64 = std::int64_t;
 using u64 = std::uint64_t;
 
 #include "arm7tdmi.hpp"
+#include "ppu.hpp"
 
 class GameBoyAdvance {
 public:
 	ARM7TDMI cpu;
+	GBAPPU ppu;
 
 	GameBoyAdvance();
+	~GameBoyAdvance();
 	void reset();
 	void run();
 
@@ -42,10 +44,12 @@ public:
 	void save();
 
 	template <typename T> T read(u32 address);
+	template <typename T> void write(u32 address, T value);
 
 	std::atomic<bool> running;
 	std::atomic<bool> step;
 	std::atomic<bool> trace;
+	std::string previousLogLine;
 	std::stringstream log;
 
 	std::vector<u8> romBuff;
