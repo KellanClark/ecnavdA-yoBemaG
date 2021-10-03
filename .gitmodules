@@ -7,3 +7,6 @@
 [submodule "modules/fmt"]
 	path = modules/fmt
 	url = https://github.com/fmtlib/fmt.git
+[submodule "modules/imgui_club"]
+	path = modules/imgui_club
+	url = https://github.com/StrikerX3/imgui_club.git

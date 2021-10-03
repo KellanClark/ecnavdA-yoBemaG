@@ -33,3 +33,5 @@
 
 # Misc.
 build/
+.cache/
+.vscode/

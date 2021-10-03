@@ -30,8 +30,6 @@ bool showRomInfo;
 void romInfoWindow();
 bool showNoBios;
 void noBiosWindow();
-bool showStepWarning;
-void stepWarningWindow();
 bool showCpuDebug;
 void cpuDebugWindow();
 
@@ -40,7 +38,7 @@ void biosFileDialog();
 
 // Everything else
 GameBoyAdvance GBA;
-std::thread emuThread(&GameBoyAdvance::run, std::ref(GBA));
+std::thread emuThread(&GBACPU::run, std::ref(GBA.cpu));
 int loadRom();
 
 int main(int argc, char *argv[]) {
@@ -178,8 +176,6 @@ int main(int argc, char *argv[]) {
 			romInfoWindow();
 		if (showNoBios)
 			noBiosWindow();
-		if (showStepWarning)
-			stepWarningWindow();
 		if (showCpuDebug)
 			cpuDebugWindow();
 
@@ -202,6 +198,7 @@ int main(int argc, char *argv[]) {
 		SDL_GL_SwapWindow(window);
 	}
 
+	GBA.cpu.addThreadEvent(GBACPU::STOP, 0);
 	emuThread.detach();
 
 	// ImGui
@@ -250,20 +247,15 @@ void mainMenuBar() {
 	if (ImGui::BeginMenu("Emulation")) {
 		if (ImGui::MenuItem("Reset")) {
 			GBA.reset();
-			GBA.running = true;
+			GBA.cpu.addThreadEvent(GBACPU::START);
 		}
 
-		if (GBA.running) {
+		if (GBA.cpu.running) {
 			if (ImGui::MenuItem("Pause"))
-				GBA.running = false;
+				GBA.cpu.addThreadEvent(GBACPU::STOP, 0);
 		} else {
-			if (ImGui::MenuItem("Unpause")) {
-				if (GBA.step) {
-					showStepWarning = true;
-				} else {
-					GBA.running = true;
-				}
-			}
+			if (ImGui::MenuItem("Unpause"))
+				GBA.cpu.addThreadEvent(GBACPU::START);
 		}
 
 		ImGui::EndMenu();
@@ -307,51 +299,30 @@ void noBiosWindow() {
 	ImGui::End();
 }
 
-void stepWarningWindow() {
-	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5, 0.5));
-	ImGui::Begin("CPU in Step Mode");
-
-	ImGui::Text("You are about to unpause while the system is set to step.\nDoing this would almost immediately pause the system again.\n You can disable it manually in the Debug CPU menu, disable it now, or continue anyway.");
-
-	if (ImGui::Button("Wait"))
-		showStepWarning = false;
-	ImGui::SameLine();
-	if (ImGui::Button("Disable Now")) {
-		showStepWarning = false;
-		GBA.step = false;
-		GBA.running = true;
-	}
-	ImGui::SameLine();
-	if (ImGui::Button("Continue")) {
-		showStepWarning = false;
-		GBA.running = true;
-	}
-
-	ImGui::End();
-}
-
 void cpuDebugWindow() {
 	static bool shouldAutoscroll;
 
 	ImGui::SetNextWindowSize(ImVec2(700, 600), ImGuiCond_FirstUseEver);
-	ImGui::Begin("Debug CPU");
+	ImGui::Begin("Debug CPU", &showCpuDebug);
 
 	if (ImGui::Button("Reset"))
 		GBA.reset();
 	ImGui::SameLine();
-	if (GBA.running) {
+	if (GBA.cpu.running) {
 		if (ImGui::Button("Pause"))
-			GBA.running = false;
+			GBA.cpu.addThreadEvent(GBACPU::STOP, 0);
 	} else {
 		if (ImGui::Button("Unpause"))
-			GBA.running = true;
+			GBA.cpu.addThreadEvent(GBACPU::START);
 	}
 	
 	ImGui::Spacing();
-	ImGui::Checkbox("Step Mode", (bool *)&GBA.step);
-	if (GBA.step) {
-		if (ImGui::Button("Step"))
-			GBA.running = true;
+	if (ImGui::Button("Step")) {
+		// Add events the hard way so mutex doesn't have to be unlocked
+		GBA.cpu.threadQueueMutex.lock();
+		GBA.cpu.threadQueue.push(GBACPU::threadEvent{GBACPU::START, 0, nullptr});
+		GBA.cpu.threadQueue.push(GBACPU::threadEvent{GBACPU::STOP, 1, nullptr});
+		GBA.cpu.threadQueueMutex.unlock();
 	}
 
 	ImGui::Separator();
@@ -379,11 +350,10 @@ void cpuDebugWindow() {
 	ImGui::Spacing();
 	ImGui::Checkbox("Auto-scroll", &shouldAutoscroll);
 	ImGui::SameLine();
-	ImGui::Checkbox("Trace Instructions", (bool *)&GBA.trace);
+	ImGui::Checkbox("Trace Instructions", (bool *)&GBA.cpu.traceInstructions);
 	ImGui::SameLine();
 	if (ImGui::Button("Save Log")) {
 		std::ofstream logFileStream{"log", std::ios::trunc};
-		//logFileStream.write(reinterpret_cast<const char*>(ppu.vram), sizeof(ppu.vram));
 		logFileStream << GBA.log.str();
 		logFileStream.close();
 	}
@@ -393,6 +363,10 @@ void cpuDebugWindow() {
 		ImGui::Checkbox("Always Show S Bit", (bool *)&GBA.cpu.disassemblerOptions.alwaysShowSBit);
 		ImGui::Checkbox("Show Operands in Hex", (bool *)&GBA.cpu.disassemblerOptions.printOperandsHex);
 		ImGui::Checkbox("Show Addresses in Hex", (bool *)&GBA.cpu.disassemblerOptions.printAddressesHex);
+		ImGui::Checkbox("Simplify Register Names", (bool *)&GBA.cpu.disassemblerOptions.simplifyRegisterNames);
+		ImGui::Checkbox("Simplify LDM and STM to PUSH and POP", (bool *)&GBA.cpu.disassemblerOptions.simplifyPushPop);
+		ImGui::Checkbox("Use Alternative Stack Suffixes for LDM and STM", (bool *)&GBA.cpu.disassemblerOptions.ldmStmStackSuffixes);
+		ImGui::TreePop();
 	}
 
 	ImGui::Spacing();
@@ -404,6 +378,7 @@ void cpuDebugWindow() {
 		if (shouldAutoscroll)
 			ImGui::SetScrollHereY(1.0f);
 		ImGui::EndChild();
+		ImGui::TreePop();
 	}
 
 	ImGui::End();

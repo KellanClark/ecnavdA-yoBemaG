@@ -15,10 +15,11 @@ add_subdirectory(modules/nativefiledialog-extended)
 add_subdirectory(modules/fmt)
 
 include_directories(
-	${PROJECT_SOURCE_DIR}/include/
+	include/
 	${SDL2_INCLUDE_DIRS}
 	modules/imgui/
 	modules/imgui/examples/libs/gl3w/
+	modules/imgui_club/imgui_memory_editor
 )
 
 add_executable(ecnavda-yobemag
@@ -31,25 +32,27 @@ add_executable(ecnavda-yobemag
 	modules/imgui/backends/imgui_impl_opengl3.cpp
 
 	src/main.cpp
+	src/scheduler.cpp
 	src/gba.cpp
 	src/arm7tdmi.cpp
+	src/cpu.cpp
 	src/ppu.cpp
 )
 
 target_compile_options(ecnavda-yobemag PRIVATE
 	-ftemplate-depth=5000
 	-fconstexpr-depth=5000
-	-Wno-pointer-arith
 	-MMD
 	-MP
 	-Wall
 	-g
-	-fsanitize=address
-	-fsanitize=leak
+	#-fsanitize=address
+	#-fsanitize=leak
 	-fsanitize=undefined
-	-fsanitize=pointer-compare
-	-fsanitize=pointer-subtract
+	#-fsanitize=pointer-compare
+	#-fsanitize=pointer-subtract
 	-fstack-protector-all
+	-fsanitize=thread
 )
 
 target_link_libraries(ecnavda-yobemag PRIVATE
@@ -62,10 +65,11 @@ target_link_libraries(ecnavda-yobemag PRIVATE
 	-lGL
 	-lm
 	-lpthread
-	-fsanitize=address
-	-fsanitize=leak
+	#-fsanitize=address
+	#-fsanitize=leak
 	-fsanitize=undefined
-	-fsanitize=pointer-compare
-	-fsanitize=pointer-subtract
+	#-fsanitize=pointer-compare
+	#-fsanitize=pointer-subtract
 	-fstack-protector-all
+	-fsanitize=thread
 )

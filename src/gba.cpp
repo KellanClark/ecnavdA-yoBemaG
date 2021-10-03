@@ -1,14 +1,23 @@
 
 #include "gba.hpp"
+#include "arm7tdmi.hpp"
 
 #define toPage(x) (x >> 15)
 
 GameBoyAdvance::GameBoyAdvance() : cpu(*this), ppu(*this) {
-	step = false;
-	trace = true;
-
-	for (int i = toPage(0x6000000); i < toPage(0x6018000); i++) {
-		pageTableRead[i] = pageTableWrite[i] = &ppu.vram[(i - toPage(0x6000000)) << 15];
+	// Fill page tables
+	for (int i = toPage(0x2000000); i < toPage(0x3000000); i += (256 / 32)) {
+		for (int j = i; j < (i + (256 / 32)); j++) {
+			pageTableRead[j] = pageTableWrite[j] = &ewram[(j - i) << 15];
+		}
+	}
+	for (int i = toPage(0x3000000); i < toPage(0x4000000); i++) {
+		pageTableRead[i] = pageTableWrite[i] = &iwram[0];
+	}
+	for (int i = toPage(0x6000000); i < toPage(0x7000000); i += 4) {
+		pageTableRead[i] = pageTableWrite[i] = &ppu.vram[0];
+		pageTableRead[i + 1] = pageTableWrite[i + 1] = &ppu.vram[0x08000];
+		pageTableRead[i + 2] = pageTableWrite[i + 2] = &ppu.vram[0x10000];
 	}
 
 	reset();
@@ -19,42 +28,23 @@ GameBoyAdvance::~GameBoyAdvance() {
 }
 
 void GameBoyAdvance::reset() {
-	running = false;
+	cpu.running = false;
 	log.str("");
 
+	memset(ewram, 0, sizeof(ewram));
+	memset(iwram, 0, sizeof(iwram));
+
+	systemEvents.reset();
 	cpu.reset();
 	ppu.reset();
-
-	if (step)
-		running = true;
-}
-
-void GameBoyAdvance::run() {
-	while (1) {
-		if (running) {
-			if (trace && (cpu.pipelineStage == 3)) {
-				std::string disasm = cpu.disassemble(cpu.reg.R[15] - 8, cpu.pipelineOpcode3);
-				std::string logLine = fmt::format("0x{:0>8X} | 0x{:0>8X} | {}\n", cpu.reg.R[15] - 8, cpu.pipelineOpcode3, disasm);
-				if (logLine.compare(previousLogLine)) {
-					log << logLine;
-					previousLogLine = logLine;
-				}
-			}
-			cpu.cycle();
-			ppu.cycle();
-
-			if (step && (cpu.pipelineStage == 3))
-				running = false;
-		}
-	}
 }
 
 int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_) {
-	running = false;
+	cpu.running = false;
 	std::ifstream romFileStream;
 	romFileStream.open(romFilePath_, std::ios::binary);
 	if (!romFileStream.is_open()) {
-		printf("Failed to open ROM!\n");
+		printf("Failed to open ROM file: %s\n", romFilePath_.c_str());
 		return -1;
 	}
 	romFileStream.seekg(0, std::ios::end);
@@ -75,9 +65,9 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 		romSize = v + 1;
 	}
 
-	// Fill open bus
+	// Fill open bus values
 	for (int i = romSize; i < 0x2000000; i += 2) {
-		//
+		// TODO
 	}
 
 	// Fill page table for rom buffer
@@ -88,13 +78,13 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 		pageTableRead[pageIndex | 0x1800] = ptr; // 0x0C00'0000 - 0x0DFF'FFFF
 	}
 
-	running = true;
+	cpu.running = true;
 	return 0;
 }
 
 void GameBoyAdvance::save() {
 	/*std::ofstream saveFileStream{"vram.bin", std::ios::binary | std::ios::trunc};
-	saveFileStream.write(reinterpret_cast<const char*>(ppu.vram), sizeof(ppu.vram));
+	saveFileStream.write(reinterpret_cast<const char*>(ppu.paletteRam), sizeof(ppu.paletteRam));
 	saveFileStream.close();*/
 }
 
@@ -104,23 +94,27 @@ T GameBoyAdvance::read(u32 address) {
 	int offset = address & 0x7FFF;
 	void *pointer = pageTableRead[page];
 
+	T val;
 	if (pointer != NULL) {
-		T val;
-		std::memcpy(&val, (pointer + offset), sizeof(T));
+		std::memcpy(&val, (u8*)pointer + offset, sizeof(T));
 		return val;
 	} else {
 		switch (page) {
-		case toPage(0x04000000): // I/O
+		case toPage(0x4000000): // I/O
 			switch (offset) {
 			case 0x000 ... 0x056: // PPU
 				return ppu.readIO<T>(address);
 			}
 			break;
+		case toPage(0x5000000) ... toPage(0x6000000):
+			std::memcpy(&val, &ppu.paletteRam + (offset & 0x3FF), sizeof(T));
+			return val;
 		}
 	}
 
 	return 0;
 }
+template u8 GameBoyAdvance::read<u8>(u32);
 template u16 GameBoyAdvance::read<u16>(u32);
 template u32 GameBoyAdvance::read<u32>(u32);
 
@@ -131,14 +125,22 @@ void GameBoyAdvance::write(u32 address, T value) {
 	void *pointer = pageTableWrite[page];
 
 	if (pointer != NULL) {
-		std::memcpy((pointer + offset), &value, sizeof(T));
+		std::memcpy((u8*)pointer + offset, &value, sizeof(T));
 	} else {
 		switch (page) {
-		case toPage(0x04000000): // I/O
+		case toPage(0x4000000): // I/O
 			switch (offset) {
 			case 0x000 ... 0x056: // PPU
 				ppu.writeIO<T>(address, value);
 				break;
+			}
+			break;
+		case toPage(0x5000000) ... toPage(0x6000000):
+			if (sizeof(T) == 1) {
+				std::memcpy(&ppu.paletteRam + (offset & 0x3FE), &value, sizeof(T));
+				std::memcpy(&ppu.paletteRam + ((offset & 0x3FE) + 1), &value, sizeof(T));
+			} else {
+				std::memcpy(&ppu.paletteRam + (offset & 0x3FF), &value, sizeof(T));
 			}
 			break;
 		}
