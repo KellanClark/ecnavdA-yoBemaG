@@ -41,6 +41,21 @@ void GameBoyAdvance::reset() {
 
 int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_) {
 	cpu.running = false;
+
+	std::ifstream biosFileStream;
+	biosFileStream.open(biosFilePath_, std::ios::binary);
+	if (!biosFileStream.is_open()) {
+		printf("Failed to open BIOS file: %s\n", biosFilePath_.c_str());
+		return -1;
+	}
+	biosFileStream.seekg(0, std::ios::end);
+	size_t biosSize = biosFileStream.tellg();
+	biosFileStream.seekg(0, std::ios::beg);
+	biosBuff.resize(biosSize);
+	biosFileStream.read(reinterpret_cast<char *>(biosBuff.data()), biosSize);
+	biosFileStream.close();
+	biosBuff.resize(0x4000);
+
 	std::ifstream romFileStream;
 	romFileStream.open(romFilePath_, std::ios::binary);
 	if (!romFileStream.is_open()) {
@@ -90,6 +105,10 @@ void GameBoyAdvance::save() {
 
 template <typename T>
 T GameBoyAdvance::read(u32 address) {
+	// Temporary to match logs
+	if (address == 0x80000000)
+		return (T)0x1A000002;
+
 	int page = (address & 0x0FFFFFFF) >> 15;
 	int offset = address & 0x7FFF;
 	void *pointer = pageTableRead[page];
@@ -100,6 +119,12 @@ T GameBoyAdvance::read(u32 address) {
 		return val;
 	} else {
 		switch (page) {
+		case toPage(0x0000000): // BIOS
+			if (address <= 0x3FFF) {
+				std::memcpy(&val, (u8*)biosBuff.data() + offset, sizeof(T));
+				return val;
+			}
+			break;
 		case toPage(0x4000000): // I/O
 			switch (offset) {
 			case 0x000 ... 0x056: // PPU

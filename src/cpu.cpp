@@ -2,6 +2,8 @@
 #include "cpu.hpp"
 #include "gba.hpp"
 #include "scheduler.hpp"
+#include "types.hpp"
+#include <cstdio>
 
 GBACPU::GBACPU(GameBoyAdvance& bus_) : ARM7TDMI(bus_) {
 	traceInstructions = true;
@@ -14,6 +16,12 @@ void GBACPU::reset() {
 }
 
 void GBACPU::run() { // Emulator thread is run from here
+	std::ifstream logFileStream;
+	logFileStream.open("arm-log.bin", std::ios::binary);
+	u32 logBuff[18];
+	logFileStream.read(reinterpret_cast<char *>(logBuff), sizeof(logBuff));
+	logFileStream.read(reinterpret_cast<char *>(logBuff), sizeof(logBuff));
+
 	while (1) {
 		processThreadEvents();
 
@@ -23,8 +31,8 @@ void GBACPU::run() { // Emulator thread is run from here
 
 			for (u64 i = 0; ((i < cyclesToRun) && !systemEvents.recalculate); i++) {
 				if (traceInstructions && (pipelineStage == 3)) {
-					std::string disasm = disassemble(reg.R[15] - 8, pipelineOpcode3);
-					std::string logLine = fmt::format("0x{:0>8X} | 0x{:0>8X} | {}\n", reg.R[15] - 8, pipelineOpcode3, disasm);
+					std::string disasm = disassemble(reg.R[15] - (reg.thumbMode ? 4 : 8), pipelineOpcode3, reg.thumbMode);
+					std::string logLine = fmt::format("0x{:0>8X} | 0x{:0>8X} | {}\n", reg.R[15] - (reg.thumbMode ? 4 : 8), pipelineOpcode3, disasm);
 					if (logLine.compare(previousLogLine)) {
 						bus.log << logLine;
 						previousLogLine = logLine;
@@ -33,6 +41,16 @@ void GBACPU::run() { // Emulator thread is run from here
 
 				cycle();
 				++systemEvents.currentTime;
+
+				if (pipelineStage == 3 && 0) {
+					logFileStream.read(reinterpret_cast<char *>(logBuff), sizeof(logBuff));
+					printf("r0:0x%08X r1:0x%08X r2:0x%08X r3:0x%08X r4:0x%08X r5:0x%08X r6:0x%08X r7:0x%08X r8:0x%08X r9:0x%08X r10:0x%08X r11:0x%08X r12:0x%08X r13:0x%08X r14:0x%08X r15:0x%08X cpsr:0x%08X\n", logBuff[0], logBuff[1], logBuff[2], logBuff[3], logBuff[4], logBuff[5], logBuff[6], logBuff[7], logBuff[8], logBuff[9], logBuff[10], logBuff[11], logBuff[12], logBuff[13], logBuff[14], logBuff[15], logBuff[16]);
+					printf("r0:0x%08X r1:0x%08X r2:0x%08X r3:0x%08X r4:0x%08X r5:0x%08X r6:0x%08X r7:0x%08X r8:0x%08X r9:0x%08X r10:0x%08X r11:0x%08X r12:0x%08X r13:0x%08X r14:0x%08X r15:0x%08X cpsr:0x%08X\n\n", reg.R[0], reg.R[1], reg.R[2], reg.R[3], reg.R[4], reg.R[5], reg.R[6], reg.R[7], reg.R[8], reg.R[9], reg.R[10], reg.R[11], reg.R[12], reg.R[13], reg.R[14], reg.R[15], reg.CPSR);
+					if ((logBuff[0] != reg.R[0]) || (logBuff[1] != reg.R[1]) || (logBuff[2] != reg.R[2]) || (logBuff[3] != reg.R[3]) || (logBuff[4] != reg.R[4]) || (logBuff[5] != reg.R[5]) || (logBuff[6] != reg.R[6]) || (logBuff[7] != reg.R[7]) || (logBuff[8] != reg.R[8]) || (logBuff[9] != reg.R[9]) || (logBuff[10] != reg.R[10]) || (logBuff[11] != reg.R[11]) || (logBuff[12] != reg.R[12]) || (logBuff[13] != reg.R[13]) || (logBuff[14] != reg.R[14]) || (logBuff[15] != reg.R[15]) || (logBuff[16] != reg.CPSR)) {
+						running = false;
+						break;
+					}
+				}
 			}
 
 			if (!systemEvents.recalculate && (systemEvents.eventQueue.top().callback != nullptr)) {

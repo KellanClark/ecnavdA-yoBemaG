@@ -46,13 +46,13 @@ target_compile_options(ecnavda-yobemag PRIVATE
 	-MP
 	-Wall
 	-g
-	#-fsanitize=address
-	#-fsanitize=leak
+	-fsanitize=address
+	-fsanitize=leak
+	-fsanitize=pointer-compare
+	-fsanitize=pointer-subtract
 	-fsanitize=undefined
-	#-fsanitize=pointer-compare
-	#-fsanitize=pointer-subtract
 	-fstack-protector-all
-	-fsanitize=thread
+	#-fsanitize=thread
 )
 
 target_link_libraries(ecnavda-yobemag PRIVATE
@@ -65,11 +65,11 @@ target_link_libraries(ecnavda-yobemag PRIVATE
 	-lGL
 	-lm
 	-lpthread
-	#-fsanitize=address
-	#-fsanitize=leak
+	-fsanitize=address
+	-fsanitize=leak
 	-fsanitize=undefined
-	#-fsanitize=pointer-compare
-	#-fsanitize=pointer-subtract
+	-fsanitize=pointer-compare
+	-fsanitize=pointer-subtract
 	-fstack-protector-all
-	-fsanitize=thread
+	#-fsanitize=thread
 )

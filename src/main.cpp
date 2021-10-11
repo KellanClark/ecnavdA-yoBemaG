@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
-	if (argRomGiven) {
+	if (argRomGiven && argBiosGiven) {
 		if (loadRom() == -1) {
 			return -1;
 		}
@@ -215,7 +215,10 @@ int main(int argc, char *argv[]) {
 }
 
 int loadRom() {
-	GBA.reset();
+	//GBA.reset();
+	GBA.cpu.addThreadEvent(GBACPU::RESET);
+	//while (!GBA.cpu.threadQueue.empty());
+
 	if (GBA.loadRom(argRomFilePath, argBiosFilePath))
 		return -1;
 
@@ -326,7 +329,7 @@ void cpuDebugWindow() {
 	}
 
 	ImGui::Separator();
-	std::string tmp = GBA.cpu.disassemble(GBA.cpu.reg.R[15] - 8, GBA.cpu.pipelineOpcode3);
+	std::string tmp = GBA.cpu.disassemble(GBA.cpu.reg.R[15] - (GBA.cpu.reg.thumbMode ? 4 : 8), GBA.cpu.pipelineOpcode3, GBA.cpu.reg.thumbMode);
 	ImGui::Text("Current Opcode:  %s", tmp.c_str());
 	ImGui::Spacing();
 	ImGui::Text("r0:  %08X", GBA.cpu.reg.R[0]);

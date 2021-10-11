@@ -45,6 +45,7 @@ public:
 
 	std::stringstream log;
 
+	std::vector<u8> biosBuff;
 	u8 ewram[0x40000];
 	u8 iwram[0x8000];
 	std::vector<u8> romBuff;

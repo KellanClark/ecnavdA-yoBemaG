@@ -17,8 +17,7 @@ public:
 	void resetARM7TDMI();
 	void cycle();
 
-	
-	std::string disassemble(u32 address, u32 opcode);
+	std::string disassemble(u32 address, u32 opcode, bool thumb);
 	std::string getRegName(unsigned int regNumber);
 	std::string disassembleShift(u32 opcode, bool showUpDown);
 	struct {
@@ -31,6 +30,15 @@ public:
 		bool ldmStmStackSuffixes;
 	} disassemblerOptions;
 
+	enum cpuMode {
+		MODE_USER = 0x10,
+		MODE_FIQ = 0x11,
+		MODE_IRQ = 0x12,
+		MODE_SUPERVISOR = 0x13,
+		MODE_ABORT = 0x17,
+		MODE_UNDEFINED = 0x1B,
+		MODE_SYSTEM = 0x1F
+	};
 	struct {
 		// Normal registers
 		u32 R[16];
@@ -49,7 +57,6 @@ public:
 			};
 			u32 CPSR;
 		};
-		u32 SPSR;
 
 		// Banked registers for each mode
 		u32 R8_user, R9_user, R10_user, R11_user, R12_user, R13_user, R14_user;
@@ -66,19 +73,41 @@ public:
 	u32 pipelineOpcode2; // R15 + 4
 	u32 pipelineOpcode3; // R15 + 8
 	bool incrementR15;
+	bool tmpIncrement;
 
 	inline bool checkCondition(int condtionCode);
 	void unknownOpcodeArm(u32 opcode);
 	void unknownOpcodeArm(u32 opcode, std::string message);
+	void unknownOpcodeThumb(u16 opcode);
+	void unknownOpcodeThumb(u16 opcode, std::string message);
 	template <bool dataTransfer, bool iBit> bool computeShift(u32 opcode, u32 *result);
 
+	void switchMode(cpuMode newMode);
+	void bankRegisters(cpuMode newMode, bool changeCPSR);
+	void leaveMode();
+
 	template <bool iBit, int operation, bool sBit> void dataProcessing(u32 opcode);
+	template <bool accumulate, bool sBit> void multiply(u32 opcode);
+	template <bool signedMul, bool accumulate, bool sBit> void multiplyLong(u32 opcode);
+	template <bool byteWord> void singleDataSwap(u32 opcode);
+	template <bool targetPSR> void psrLoad(u32 opcode);
+	template <bool targetPSR> void psrStoreReg(u32 opcode);
+	template <bool targetPSR> void psrStoreImmediate(u32 opcode);
+	void branchExchange(u32 opcode);
 	template <bool prePostIndex, bool upDown, bool immediateOffset, bool writeBack, bool loadStore, int shBits> void halfwordDataTransfer(u32 opcode);
 	template <bool immediateOffset, bool prePostIndex, bool upDown, bool byteWord, bool writeBack, bool loadStore> void singleDataTransfer(u32 opcode);
+	void undefined(u32 opcode);
 	template <bool prePostIndex, bool upDown, bool sBit, bool writeBack, bool loadStore> void blockDataTransfer(u32 opcode);
 	template <bool lBit> void branch(u32 opcode);
+	void softwareInterrupt(u32 opcode);
+
+	template <int op, int destinationReg> void thumbAluImmediate(u16 opcode);
+	template <int op, bool opFlag1, bool opFlag2> void thumbHighRegOperation(u16 opcode);
+	template <int destinationReg> void thumbPcRelativeLoad(u16 opcode);
+	template <bool spPc, int destinationReg> void thumbLoadAddress(u16 opcode);
 
 	static const std::array<void (ARM7TDMI::*)(u32), 4096> LUT;
+	static const std::array<void (ARM7TDMI::*)(u16), 1024> thumbLUT;
 };
 
 #endif
