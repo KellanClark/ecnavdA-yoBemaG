@@ -16,8 +16,8 @@ public:
 	GBAPPU(GameBoyAdvance& bus_);
 	void reset();
 
-	template <typename T> T readIO(u32 address);
-	template <typename T> void writeIO(u32 address, T value);
+	u8 readIO(u32 address);
+	void writeIO(u32 address, u8 value);
 
 	static void lineStartEvent(void *object);
 	static void hBlankEvent(void *object);

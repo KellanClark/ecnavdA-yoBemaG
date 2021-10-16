@@ -78,20 +78,7 @@ void GBAPPU::drawScanline() {
 	}
 }
 
-template <typename T>
-T GBAPPU::readIO(u32 address) {
-	if (sizeof(T) == 4) {
-		u32 val = readIO<u8>(address++);
-		val |= readIO<u8>(address++) << 8;
-		val |= readIO<u8>(address++) << 16;
-		val |= readIO<u8>(address) << 24;
-		return val;
-	} else if (sizeof(T) == 2) {
-		u16 val = readIO<u8>(address++);
-		val |= readIO<u8>(address) << 8;
-		return val;
-	}
-
+u8 GBAPPU::readIO(u32 address) {
 	switch (address) {
 	case 0x4000000:
 		return (u8)DISPCNT;
@@ -109,24 +96,8 @@ T GBAPPU::readIO(u32 address) {
 		return 0;
 	}
 }
-template u8 GBAPPU::readIO<u8>(u32);
-template u16 GBAPPU::readIO<u16>(u32);
-template u32 GBAPPU::readIO<u32>(u32);
 
-template <typename T>
-void GBAPPU::writeIO(u32 address, T value) {
-	if (sizeof(T) == 4) {
-		writeIO<u8>(address++, (u8)value);
-		writeIO<u8>(address++, (u8)(value >> 8));
-		writeIO<u8>(address++, (u8)(value >> 16));
-		writeIO<u8>(address, (u8)(value >> 24));
-		return;
-	} else if (sizeof(T) == 2) {
-		writeIO<u8>(address++, (u8)value);
-		writeIO<u8>(address, (u8)(value >> 8));
-		return;
-	}
-
+void GBAPPU::writeIO(u32 address, u8 value) {
 	switch (address) {
 	case 0x4000000:
 		DISPCNT = (DISPCNT & 0xFF00) | value;
@@ -142,6 +113,3 @@ void GBAPPU::writeIO(u32 address, T value) {
 		break;
 	}
 }
-template void GBAPPU::writeIO<u8>(u32, u8);
-template void GBAPPU::writeIO<u16>(u32, u16);
-template void GBAPPU::writeIO<u32>(u32, u32);

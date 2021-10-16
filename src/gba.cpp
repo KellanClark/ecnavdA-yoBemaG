@@ -33,6 +33,7 @@ void GameBoyAdvance::reset() {
 
 	memset(ewram, 0, sizeof(ewram));
 	memset(iwram, 0, sizeof(iwram));
+	KEYINPUT = 0x1FF;
 
 	systemEvents.reset();
 	cpu.reset();
@@ -42,8 +43,7 @@ void GameBoyAdvance::reset() {
 int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_) {
 	cpu.running = false;
 
-	std::ifstream biosFileStream;
-	biosFileStream.open(biosFilePath_, std::ios::binary);
+	std::ifstream biosFileStream{biosFilePath_, std::ios::binary};
 	if (!biosFileStream.is_open()) {
 		printf("Failed to open BIOS file: %s\n", biosFilePath_.c_str());
 		return -1;
@@ -56,8 +56,7 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	biosFileStream.close();
 	biosBuff.resize(0x4000);
 
-	std::ifstream romFileStream;
-	romFileStream.open(romFilePath_, std::ios::binary);
+	std::ifstream romFileStream{romFilePath_, std::ios::binary};
 	if (!romFileStream.is_open()) {
 		printf("Failed to open ROM file: %s\n", romFilePath_.c_str());
 		return -1;
@@ -122,11 +121,26 @@ T GameBoyAdvance::read(u32 address) {
 			}
 			break;
 		case toPage(0x4000000): // I/O
+			// Split everything into u8
+			if (sizeof(T) == 4) {
+				u32 val = read<u8>(address++);
+				val |= read<u8>(address++) << 8;
+				val |= read<u8>(address++) << 16;
+				val |= read<u8>(address) << 24;
+				return val;
+			} else if (sizeof(T) == 2) {
+				u16 val = read<u8>(address++);
+				val |= read<u8>(address) << 8;
+				return val;
+			}
+
 			switch (offset) {
 			case 0x000 ... 0x056: // PPU
-				return ppu.readIO<T>(address);
-			case 0x130: // Stub joypad
-				return (T)0xFFFFFFFF;
+				return ppu.readIO(address);
+			case 0x130: // Joypad
+				return (u8)KEYINPUT;
+			case 0x131:
+				return (u8)(KEYINPUT >> 8);
 			}
 			break;
 		case toPage(0x5000000) ... toPage(0x6000000):
@@ -152,9 +166,21 @@ void GameBoyAdvance::write(u32 address, T value) {
 	} else {
 		switch (page) {
 		case toPage(0x4000000): // I/O
+			if (sizeof(T) == 4) {
+				write<u8>(address++, (u8)value);
+				write<u8>(address++, (u8)(value >> 8));
+				write<u8>(address++, (u8)(value >> 16));
+				write<u8>(address, (u8)(value >> 24));
+				return;
+			} else if (sizeof(T) == 2) {
+				write<u8>(address++, (u8)value);
+				write<u8>(address, (u8)(value >> 8));
+				return;
+			}
+
 			switch (offset) {
 			case 0x000 ... 0x056: // PPU
-				ppu.writeIO<T>(address, value);
+				ppu.writeIO(address, value);
 				break;
 			}
 			break;

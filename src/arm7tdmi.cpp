@@ -1278,8 +1278,10 @@ void ARM7TDMI::singleDataSwap(u32 opcode) {
 	u32 destinationRegister = (opcode >> 12) & 0xF;
 
 	if (byteWord) {
-		reg.R[destinationRegister] = bus.read<u8>(address);
+		u32 result = bus.read<u8>(address);
 		bus.write<u8>(address, (u8)reg.R[sourceRegister]);
+
+		reg.R[destinationRegister] = result;
 	} else {
 		u32 result = bus.read<u32>(address & ~3);
 		bus.write<u32>(address & ~3, reg.R[sourceRegister]);
@@ -1417,16 +1419,16 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 	u32 result = 0;
 	if (loadStore) {
 		switch (shBits) {
-		case 1: // Unsigned Halfword
+		case 1: // LDRH
 			result = bus.read<u16>(address & ~1);
 
 			if (address & 1)
 				result = (result >> 8) | (result << 24);
 			break;
-		case 2: // Signed Byte
-			result = ((i32)((u32)bus.read<u8>(address & ~1) << 24) >> 24);
+		case 2: // LDRSB
+			result = ((i32)((u32)bus.read<u8>(address) << 24) >> 24);
 			break;
-		case 3: // Signed Halfword
+		case 3: // LDRSH
 			result = ((i32)((u32)bus.read<u16>(address & ~1) << 16) >> 16);
 
 			if (address & 1)
@@ -1438,13 +1440,7 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 		}
 	} else {
 		switch (shBits) {
-		case 1: // Unsigned Halfword
-			bus.write<u16>(address & ~1, (u16)reg.R[srcDestRegister]);
-			break;
-		case 2: // Signed Byte
-			bus.write<u8>(address, (u8)reg.R[srcDestRegister]);
-			break;
-		case 3: // Signed Halfword
+		case 1: // STRH
 			bus.write<u16>(address & ~1, (u16)reg.R[srcDestRegister]);
 			break;
 		default:

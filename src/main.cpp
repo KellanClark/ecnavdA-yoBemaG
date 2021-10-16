@@ -1,4 +1,5 @@
 
+#include "SDL_scancode.h"
 #include "imgui.h"
 #include "backends/imgui_impl_sdl.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -7,6 +8,7 @@
 #include <nfd.hpp>
 
 #include "gba.hpp"
+#include "types.hpp"
 
 // Argument Variables
 bool argRomGiven;
@@ -35,6 +37,21 @@ void cpuDebugWindow();
 
 void romFileDialog();
 void biosFileDialog();
+
+// Input
+SDL_Scancode keymap[10] = {
+	SDL_SCANCODE_X, // Button A
+	SDL_SCANCODE_Z, // Button B
+	SDL_SCANCODE_BACKSPACE, // Select
+	SDL_SCANCODE_RETURN, // Start
+	SDL_SCANCODE_RIGHT, // Right
+	SDL_SCANCODE_LEFT, // Left
+	SDL_SCANCODE_UP, // Up
+	SDL_SCANCODE_DOWN, // Down
+	SDL_SCANCODE_S, // Button R
+	SDL_SCANCODE_A, // Button L
+};
+u16 lastJoypad;
 
 // Everything else
 GameBoyAdvance GBA;
@@ -128,7 +145,6 @@ int main(int argc, char *argv[]) {
 	bool quit = false;
 	SDL_Event event;
 	while (!quit) {
-		//unsigned int frameStartTicks = SDL_GetTicks();
 		while (SDL_PollEvent(&event)) {
 			ImGui_ImplSDL2_ProcessEvent(&event);
 
@@ -155,6 +171,17 @@ int main(int argc, char *argv[]) {
 				}
 				break;
 			}
+		}
+		// Joypad inputs
+		const u8* currentKeyStates = SDL_GetKeyboardState(NULL);
+		u16 currentJoypad = 0;
+		for (int i = 0; i < 10; i++) {
+			if (currentKeyStates[keymap[i]])
+				currentJoypad |= 1 << i;
+		}
+		if (currentJoypad != lastJoypad) {
+			GBA.cpu.addThreadEvent(GBACPU::UPDATE_KEYINPUT, ~currentJoypad);
+			lastJoypad = currentJoypad;
 		}
 
 		if (GBA.ppu.updateScreen) {
@@ -249,7 +276,7 @@ void mainMenuBar() {
 
 	if (ImGui::BeginMenu("Emulation")) {
 		if (ImGui::MenuItem("Reset")) {
-			GBA.reset();
+			GBA.cpu.addThreadEvent(GBACPU::RESET);
 			GBA.cpu.addThreadEvent(GBACPU::START);
 		}
 

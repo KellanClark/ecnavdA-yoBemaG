@@ -70,11 +70,6 @@ void GBACPU::run() { // Emulator thread is run from here
 	}
 }
 
-void GBACPU::stop(u64 cycles) {
-	systemEvents.addEvent(cycles, stopEvent, this);
-}
-
-
 void GBACPU::stopEvent(void *object) {
 	static_cast<GBACPU *>(object)->running = false;
 }
@@ -94,6 +89,9 @@ void GBACPU::processThreadEvents() {
 			break;
 		case RESET:
 			bus.reset();
+			break;
+		case UPDATE_KEYINPUT:
+			bus.KEYINPUT = currentEvent.intArg & 0x1FF;
 			break;
 		default:
 			printf("Unknown thread event:  %d\n", currentEvent.type);

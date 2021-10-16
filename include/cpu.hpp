@@ -22,7 +22,8 @@ public:
 	enum threadEventType {
 		STOP,
 		START,
-		RESET
+		RESET,
+		UPDATE_KEYINPUT
 	};
 	struct threadEvent {
 		threadEventType type;
