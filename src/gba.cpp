@@ -105,10 +105,6 @@ void GameBoyAdvance::save() {
 
 template <typename T>
 T GameBoyAdvance::read(u32 address) {
-	// Temporary to match logs
-	if (address == 0x80000000)
-		return (T)0x1A000002;
-
 	int page = (address & 0x0FFFFFFF) >> 15;
 	int offset = address & 0x7FFF;
 	void *pointer = pageTableRead[page];
@@ -162,10 +158,10 @@ void GameBoyAdvance::write(u32 address, T value) {
 			break;
 		case toPage(0x5000000) ... toPage(0x6000000):
 			if (sizeof(T) == 1) {
-				std::memcpy(&ppu.paletteRam + (offset & 0x3FE), &value, sizeof(T));
-				std::memcpy(&ppu.paletteRam + ((offset & 0x3FE) + 1), &value, sizeof(T));
+				std::memcpy(&ppu.paletteRam[0] + (offset & 0x3FE), &value, sizeof(T));
+				std::memcpy(&ppu.paletteRam[0] + ((offset & 0x3FE) | 1), &value, sizeof(T));
 			} else {
-				std::memcpy(&ppu.paletteRam + (offset & 0x3FF), &value, sizeof(T));
+				std::memcpy(&ppu.paletteRam[0] + (offset & 0x3FF), &value, sizeof(T));
 			}
 			break;
 		}
