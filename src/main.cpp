@@ -309,7 +309,7 @@ void cpuDebugWindow() {
 	ImGui::Begin("Debug CPU", &showCpuDebug);
 
 	if (ImGui::Button("Reset"))
-		GBA.reset();
+		GBA.cpu.addThreadEvent(GBACPU::RESET);
 	ImGui::SameLine();
 	if (GBA.cpu.running) {
 		if (ImGui::Button("Pause"))

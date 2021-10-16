@@ -101,10 +101,25 @@ public:
 	template <bool lBit> void branch(u32 opcode);
 	void softwareInterrupt(u32 opcode);
 
-	template <int op, int destinationReg> void thumbAluImmediate(u16 opcode);
-	template <int op, bool opFlag1, bool opFlag2> void thumbHighRegOperation(u16 opcode);
-	template <int destinationReg> void thumbPcRelativeLoad(u16 opcode);
-	template <bool spPc, int destinationReg> void thumbLoadAddress(u16 opcode);
+	template <int op, int shiftAmount> void thumbMoveShiftedReg(u16 opcode);							// 1
+	template <bool immediate, bool op, int offset> void thumbAddSubtract(u16 opcode);					// 2
+	template <int op, int destinationReg> void thumbAluImmediate(u16 opcode);							// 3
+	template <int op> void thumbAluReg(u16 opcode);														// 4
+	template <int op, bool opFlag1, bool opFlag2> void thumbHighRegOperation(u16 opcode);				// 5
+	template <int destinationReg> void thumbPcRelativeLoad(u16 opcode);									// 6
+	template <bool loadStore, bool byteWord, int offsetReg> void thumbLoadStoreRegOffset(u16 opcode);	// 7
+	template <int hsBits, int offsetReg> void thumbLoadStoreSext(u16 opcode);							// 8
+	template <bool byteWord, bool loadStore, int offset> void thumbLoadStoreImmediateOffset(u16 opcode);// 9
+	template <bool loadStore, int offset> void thumbLoadStoreHalfword(u16 opcode);						// 10
+	template <bool loadStore, int destinationReg> void thumbSpRelativeLoadStore(u16 opcode);			// 11
+	template <bool spPc, int destinationReg> void thumbLoadAddress(u16 opcode);							// 12
+	template <bool isNegative> void thumbSpAddOffset(u16 opcode);										// 13
+	template <bool loadStore, bool pcLr> void thumbPushPopRegisters(u16 opcode);						// 14
+	template <bool loadStore, int baseReg> void thumbMultipleLoadStore(u16 opcode);						// 15
+	template <int condition> void thumbConditionalBranch(u16 opcode);									// 16
+	void thumbSoftwareInterrupt(u16 opcode);															// 17
+	void thumbUncondtionalBranch(u16 opcode);															// 18
+	template <bool lowHigh> void thumbLongBranchLink(u16 opcode);										// 19
 
 	static const std::array<void (ARM7TDMI::*)(u32), 4096> LUT;
 	static const std::array<void (ARM7TDMI::*)(u16), 1024> thumbLUT;

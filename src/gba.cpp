@@ -125,10 +125,12 @@ T GameBoyAdvance::read(u32 address) {
 			switch (offset) {
 			case 0x000 ... 0x056: // PPU
 				return ppu.readIO<T>(address);
+			case 0x130: // Stub joypad
+				return (T)0xFFFFFFFF;
 			}
 			break;
 		case toPage(0x5000000) ... toPage(0x6000000):
-			std::memcpy(&val, &ppu.paletteRam + (offset & 0x3FF), sizeof(T));
+			std::memcpy(&val, &ppu.paletteRam[0] + (offset & 0x3FF), sizeof(T));
 			return val;
 		}
 	}

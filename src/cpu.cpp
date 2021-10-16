@@ -6,7 +6,7 @@
 #include <cstdio>
 
 GBACPU::GBACPU(GameBoyAdvance& bus_) : ARM7TDMI(bus_) {
-	traceInstructions = true;
+	traceInstructions = false;
 
 	reset();
 }
@@ -17,7 +17,7 @@ void GBACPU::reset() {
 
 void GBACPU::run() { // Emulator thread is run from here
 	std::ifstream logFileStream;
-	logFileStream.open("arm-log.bin", std::ios::binary);
+	logFileStream.open("/home/kellan/code/armwrestler-boot-log.bin", std::ios::binary);
 	u32 logBuff[18];
 	logFileStream.read(reinterpret_cast<char *>(logBuff), sizeof(logBuff));
 	logFileStream.read(reinterpret_cast<char *>(logBuff), sizeof(logBuff));
@@ -31,8 +31,16 @@ void GBACPU::run() { // Emulator thread is run from here
 
 			for (u64 i = 0; ((i < cyclesToRun) && !systemEvents.recalculate); i++) {
 				if (traceInstructions && (pipelineStage == 3)) {
-					std::string disasm = disassemble(reg.R[15] - (reg.thumbMode ? 4 : 8), pipelineOpcode3, reg.thumbMode);
-					std::string logLine = fmt::format("0x{:0>8X} | 0x{:0>8X} | {}\n", reg.R[15] - (reg.thumbMode ? 4 : 8), pipelineOpcode3, disasm);
+					std::string disasm;
+					std::string logLine;
+					if (reg.thumbMode) {
+						disasm = disassemble(reg.R[15] - 4, pipelineOpcode3, true);
+						logLine = fmt::format("0x{:0>8X} |     0x{:0>4X} | {}\n", reg.R[15] - 4, pipelineOpcode3, disasm);
+					} else {
+						disasm = disassemble(reg.R[15] - 8, pipelineOpcode3, false);
+						logLine = fmt::format("0x{:0>8X} | 0x{:0>8X} | {}\n", reg.R[15] - 8, pipelineOpcode3, disasm);
+					}
+
 					if (logLine.compare(previousLogLine)) {
 						bus.log << logLine;
 						previousLogLine = logLine;
