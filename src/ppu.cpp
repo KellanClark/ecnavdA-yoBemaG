@@ -65,7 +65,7 @@ void GBAPPU::drawScanline() {
 		break;
 	case 0x4:
 		for (int i = 0; i < 240; i++) {
-			auto vramIndex = ((currentScanline * 240) + i);
+			auto vramIndex = ((currentScanline * 240) + i) + (displayFrameSelect * 0xA000);
 			u8 vramData = (vram[vramIndex + 1] << 8) | vram[vramIndex];
 			u32 color = color555to8888(paletteColors[vramData]);
 			framebuffer[currentScanline][i] = color;

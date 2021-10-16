@@ -41,7 +41,7 @@ public:
 			u16 : 1;
 			u16 displayFrameSelect : 1;
 			u16 hBlankIntervalFree : 1;
-			u16 objCahracterVramMapping : 1;
+			u16 objCharacterVramMapping : 1;
 			u16 forcedBlank : 1;
 			u16 screenDisplayBg0 : 1;
 			u16 screenDisplayBg1 : 1;
