@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include "backends/imgui_impl_sdl.h"
 #include "backends/imgui_impl_opengl3.h"
+#include "imgui_memory_editor.h"
 #include <SDL2/SDL.h>
 #include <SDL_opengl.h>
 #include <nfd.hpp>
@@ -34,9 +35,15 @@ bool showNoBios;
 void noBiosWindow();
 bool showCpuDebug;
 void cpuDebugWindow();
+bool showMemEditor;
+void memEditorWindow();
 
 void romFileDialog();
 void biosFileDialog();
+MemoryEditor memEditor;
+ImU8 memEditorRead(const ImU8* data, size_t off);
+void memEditorWrite(ImU8* data, size_t off, ImU8 d);
+bool memEditorHighlight(const ImU8* data, size_t off);
 
 // Input
 SDL_Scancode keymap[10] = {
@@ -133,6 +140,9 @@ int main(int argc, char *argv[]) {
 	ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
 	ImGui_ImplOpenGL3_Init(glsl_version);
 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+	memEditor.ReadFn = memEditorRead;
+	memEditor.WriteFn = memEditorWrite;
+	memEditor.HighlightFn = memEditorHighlight;
 
 	// Create image for main display
 	glGenTextures(1, &lcdTexture);
@@ -205,6 +215,8 @@ int main(int argc, char *argv[]) {
 			noBiosWindow();
 		if (showCpuDebug)
 			cpuDebugWindow();
+		if (showMemEditor)
+			memEditorWindow();
 
 		// Console Screen
 		{
@@ -293,6 +305,7 @@ void mainMenuBar() {
 
 	if (ImGui::BeginMenu("Debug")) {
 		ImGui::MenuItem("Debug CPU", NULL, &showCpuDebug);
+		ImGui::MenuItem("Memory Editor", NULL, &showMemEditor);
 		ImGui::Separator();
 		ImGui::MenuItem("ImGui Demo", NULL, &showDemoWindow);
 
@@ -443,5 +456,62 @@ void biosFileDialog() {
 			loadRom();
 	} else if (nfdResult != NFD_CANCEL) {
 		printf("Error: %s\n", NFD::GetError());
+	}
+}
+
+void memEditorWindow() {
+	ImGui::Begin("Memory Editor", &showMemEditor);
+
+	// I *may* have straight coppied these from GBATEK
+	if (ImGui::BeginCombo("", "Jump to Memory Range")) {
+		if (ImGui::MenuItem("BIOS - System ROM (0x0000000-0x0003FFF)"))
+			memEditor.GotoAddrAndHighlight(0x0000000, 0x0000000);
+		if (ImGui::MenuItem("WRAM - On-board Work RAM (0x2000000-0x203FFFF)"))
+			memEditor.GotoAddrAndHighlight(0x2000000, 0x2000000);
+		if (ImGui::MenuItem("WRAM - On-chip Work RAM (0x3000000-0x3007FFF)"))
+			memEditor.GotoAddrAndHighlight(0x3000000, 0x3000000);
+		if (ImGui::MenuItem("I/O Registers (0x4000000-0x4000209)"))
+			memEditor.GotoAddrAndHighlight(0x4000000, 0x4000000);
+		if (ImGui::MenuItem("BG/OBJ Palette RAM (0x5000000-0x50003FF)"))
+			memEditor.GotoAddrAndHighlight(0x5000000, 0x5000000);
+		if (ImGui::MenuItem("VRAM - Video RAM (0x6000000-0x6017FFF)"))
+			memEditor.GotoAddrAndHighlight(0x6000000, 0x6000000);
+		if (ImGui::MenuItem("OAM - OBJ Attributes (0x7000000-0x70003FF)"))
+			memEditor.GotoAddrAndHighlight(0x7000000, 0x7000000);
+		if (ImGui::MenuItem("Game Pak ROM (0x8000000-0x9FFFFFF)"))
+			memEditor.GotoAddrAndHighlight(0x8000000, 0x9000000);
+		if (ImGui::MenuItem("Game Pak SRAM (0xE000000-0xE00FFFF)"))
+			memEditor.GotoAddrAndHighlight(0xE000000, 0xE000000);
+
+		ImGui::EndCombo();
+	}
+
+	memEditor.DrawContents(NULL, 0x10000000);
+
+	ImGui::End();
+}
+
+ImU8 memEditorRead(const ImU8* data, size_t off) {
+	return GBA.read<u8>((u32)off);
+}
+
+void memEditorWrite(ImU8* data, size_t off, ImU8 d) {
+	GBA.write<u8>((u32)off, d);
+}
+
+bool memEditorHighlight(const ImU8* data, size_t off) {
+	switch (off) {
+	case 0x0000000 ... 0x0003FFF:
+	case 0x2000000 ... 0x203FFFF:
+	case 0x3000000 ... 0x3007FFF:
+	case 0x4000000 ... 0x4000209:
+	case 0x5000000 ... 0x50003FF:
+	case 0x6000000 ... 0x6017FFF:
+	case 0x7000000 ... 0x70003FF:
+	case 0x8000000 ... 0x9FFFFFF:
+	case 0xE000000 ... 0xE00FFFF:
+		return true;
+	default:
+		return false;
 	}
 }
