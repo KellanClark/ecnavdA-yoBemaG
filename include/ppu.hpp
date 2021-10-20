@@ -16,16 +16,16 @@ public:
 	GBAPPU(GameBoyAdvance& bus_);
 	void reset();
 
-	u8 readIO(u32 address);
-	void writeIO(u32 address, u8 value);
-
 	static void lineStartEvent(void *object);
 	static void hBlankEvent(void *object);
 
 	void drawScanline();
 
+	u8 readIO(u32 address);
+	void writeIO(u32 address, u8 value);
+
 	std::atomic<bool> updateScreen;
-	uint32_t framebuffer[160][240];
+	uint16_t framebuffer[160][240];
 	int modeCounter; // TODO: replace with scheduler
 
 	union {

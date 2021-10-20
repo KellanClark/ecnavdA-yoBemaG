@@ -1,14 +1,9 @@
 
 #include "ppu.hpp"
 #include "scheduler.hpp"
+#include "types.hpp"
 
-// Fast with shifts
-//#define color555to8888(x) (((x & 0x7C00) << 1) | ((x & 0x03E0) << 14) | ((x & 0x001F) << 27) | 0xFF)
-// Slow with divides and multiplies
-#define color555to8888(x) \
-	(((int)((((x & 0x7C00) >> 10) / (float)31) * 255) << 8) | \
-	((int)((((x & 0x03E0) >> 5) / (float)31) * 255) << 16) | \
-	((int)(((x & 0x001F) / (float)31) * 255) << 24) | 0xFF)
+#define convertColor(x) ((x << 1) | 1)
 
 GBAPPU::GBAPPU(GameBoyAdvance& bus_) : bus(bus_) {
 	reset();
@@ -55,25 +50,34 @@ void GBAPPU::hBlankEvent(void *object) {
 
 void GBAPPU::drawScanline() {
 	switch (bgMode) {
-	case 0x3:
+	case 3:
 		for (int i = 0; i < 240; i++) {
 			auto vramIndex = ((currentScanline * 240) + i) * 2;
 			u16 vramData = (vram[vramIndex + 1] << 8) | vram[vramIndex];
-			u32 color = color555to8888(vramData);
-			framebuffer[currentScanline][i] = color;
+			framebuffer[currentScanline][i] = convertColor(vramData);
 		}
 		break;
-	case 0x4:
+	case 4:
 		for (int i = 0; i < 240; i++) {
 			auto vramIndex = ((currentScanline * 240) + i) + (displayFrameSelect * 0xA000);
-			u8 vramData = (vram[vramIndex + 1] << 8) | vram[vramIndex];
-			u32 color = color555to8888(paletteColors[vramData]);
-			framebuffer[currentScanline][i] = color;
+			u8 vramData = vram[vramIndex];
+			framebuffer[currentScanline][i] = convertColor(paletteColors[vramData]);
+		}
+		break;
+	case 5:
+		for (int x = 0; x < 240; x++) {
+			if ((x < 160) && (currentScanline < 128)) {
+				auto vramIndex = (((currentScanline * 160) + x) * 2) + (displayFrameSelect * 0xA000);
+				u16 vramData = (vram[vramIndex + 1] << 8) | vram[vramIndex];
+				framebuffer[currentScanline][x] = convertColor(vramData);
+			} else {
+				framebuffer[currentScanline][x] = convertColor(paletteColors[0]);
+			}
 		}
 		break;
 	default:
 		for (int i = 0; i < 240; i++)
-			framebuffer[currentScanline][i] = 0xFF;
+			framebuffer[currentScanline][i] = 1; // Draw black
 		break;
 	}
 }

@@ -1,10 +1,10 @@
 
-#include "SDL_scancode.h"
 #include "imgui.h"
 #include "backends/imgui_impl_sdl.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui_memory_editor.h"
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_opengl.h>
 #include <SDL_opengl.h>
 #include <nfd.hpp>
 
@@ -22,9 +22,14 @@ constexpr auto cexprHash(const char *str, std::size_t v = 0) noexcept -> std::si
 	return (*str == 0) ? v : 31 * cexprHash(str + 1) + *str;
 }
 
+// Create emulator thread
+GameBoyAdvance GBA;
+std::thread emuThread(&GBACPU::run, std::ref(GBA.cpu));
+
 // Graphics
 SDL_Window* window;
 GLuint lcdTexture;
+GLuint debugTexture;
 
 // ImGui Windows
 void mainMenuBar();
@@ -37,6 +42,7 @@ bool showCpuDebug;
 void cpuDebugWindow();
 bool showMemEditor;
 void memEditorWindow();
+#include "ppudebug.hpp"
 
 void romFileDialog();
 void biosFileDialog();
@@ -56,13 +62,11 @@ SDL_Scancode keymap[10] = {
 	SDL_SCANCODE_UP, // Up
 	SDL_SCANCODE_DOWN, // Down
 	SDL_SCANCODE_S, // Button R
-	SDL_SCANCODE_A, // Button L
+	SDL_SCANCODE_A // Button L
 };
 u16 lastJoypad;
 
 // Everything else
-GameBoyAdvance GBA;
-std::thread emuThread(&GBACPU::run, std::ref(GBA.cpu));
 int loadRom();
 
 int main(int argc, char *argv[]) {
@@ -152,6 +156,16 @@ int main(int argc, char *argv[]) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+	// Create image for debug display
+	glGenTextures(1, &debugTexture);
+	glBindTexture(GL_TEXTURE_2D, debugTexture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	u32 emuThreadTicks = 0;
+	u32 emuThreadTicksLast = 0;
 	bool quit = false;
 	SDL_Event event;
 	while (!quit) {
@@ -195,8 +209,10 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (GBA.ppu.updateScreen) {
+			emuThreadTicksLast = emuThreadTicks;
+			emuThreadTicks = SDL_GetTicks();
 			glBindTexture(GL_TEXTURE_2D, lcdTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 240, 160, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GBA.ppu.framebuffer);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB5_A1, 240, 160, 0, GL_BGRA, GL_UNSIGNED_SHORT_5_5_5_1, GBA.ppu.framebuffer);
 			GBA.ppu.updateScreen = false;
 		}
 
@@ -217,12 +233,15 @@ int main(int argc, char *argv[]) {
 			cpuDebugWindow();
 		if (showMemEditor)
 			memEditorWindow();
+		if (showLayerView)
+			layerViewWindow();
 
 		// Console Screen
 		{
 			ImGui::Begin("Game Boy Advance Screen");
 
-			ImGui::Text("%.1f FPS", io.Framerate);
+			ImGui::Text("Rendering Thread:  %.1f FPS", io.Framerate);
+			ImGui::Text("Emulator Thread:   %.1f FPS", 1000.0/(emuThreadTicks - emuThreadTicksLast));
 			ImGui::Image((void*)(intptr_t)lcdTexture, ImVec2(240 * 3, 160 * 3));
 
 			ImGui::End();
@@ -306,6 +325,7 @@ void mainMenuBar() {
 	if (ImGui::BeginMenu("Debug")) {
 		ImGui::MenuItem("Debug CPU", NULL, &showCpuDebug);
 		ImGui::MenuItem("Memory Editor", NULL, &showMemEditor);
+		ImGui::MenuItem("Inspect Layers", NULL, &showLayerView);
 		ImGui::Separator();
 		ImGui::MenuItem("ImGui Demo", NULL, &showDemoWindow);
 
@@ -460,6 +480,7 @@ void biosFileDialog() {
 }
 
 void memEditorWindow() {
+	ImGui::SetNextWindowSize(ImVec2(570, 400), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Memory Editor", &showMemEditor);
 
 	// I *may* have straight coppied these from GBATEK
