@@ -141,6 +141,16 @@ T GameBoyAdvance::read(u32 address) {
 				return (u8)KEYINPUT;
 			case 0x131:
 				return (u8)(KEYINPUT >> 8);
+			case 0x200: // IE
+				return (u8)cpu.IE;
+			case 0x201:
+				return (u8)(cpu.IE >> 8);
+			case 0x202: // IF
+				return (u8)cpu.IF;
+			case 0x203:
+				return (u8)(cpu.IF >> 8);
+			case 0x208: // IME
+				return (u8)cpu.IME;
 			}
 			break;
 		case toPage(0x5000000) ... toPage(0x6000000):
@@ -181,6 +191,21 @@ void GameBoyAdvance::write(u32 address, T value) {
 			switch (offset) {
 			case 0x000 ... 0x056: // PPU
 				ppu.writeIO(address, value);
+				break;
+			case 0x200: // IE
+				cpu.IE = (cpu.IE & 0x00FF) | ((value & 0x3F) << 8);
+				break;
+			case 0x201:
+				cpu.IE = (cpu.IE & 0x3F00) | value;
+				break;
+			case 0x202: // IF
+				cpu.IF = (cpu.IF & 0x00FF) | ((value & 0x3F) << 8);
+				break;
+			case 0x203:
+				cpu.IF = (cpu.IF & 0x3F00) | value;
+				break;
+			case 0x208:
+				cpu.IME = (bool)value;
 				break;
 			}
 			break;

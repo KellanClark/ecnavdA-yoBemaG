@@ -20,6 +20,8 @@ ARM7TDMI::ARM7TDMI(GameBoyAdvance& bus_) : bus(bus_) {
 }
 
 void ARM7TDMI::resetARM7TDMI() {
+	IE = IF = IME = 0;
+
 	pipelineStage = 0;
 	incrementR15 = false;
 
@@ -56,6 +58,16 @@ void ARM7TDMI::resetARM7TDMI() {
 
 void ARM7TDMI::cycle() {
 	if (pipelineStage == 3) {
+		if (IME && (IE & IF)) { // Service interrupt
+			bankRegisters(MODE_IRQ, true);
+			if (reg.thumbMode)
+				reg.R[14] -= 2;
+
+			reg.R[15] = 0x18;
+			pipelineStage = 1;
+			incrementR15 = false;
+		}
+
 		if (reg.thumbMode) {
 			u16 lutIndex = pipelineOpcode3 >> 6;
 			(this->*thumbLUT[lutIndex])((u16)pipelineOpcode3);
