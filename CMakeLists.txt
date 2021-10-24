@@ -75,7 +75,8 @@ target_link_libraries(ecnavda-yobemag PRIVATE
 	#-fsanitize=thread]]
 )
 
-set(CMAKE_CXX_FLAGS_DEBUG "-g -Og -fsanitize=address -fsanitize=leak -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fstack-protector-all")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -Og")
+#set(CMAKE_CXX_FLAGS_DEBUG "-g -Og -fsanitize=address -fsanitize=leak -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fstack-protector-all")
 if(CMAKE_BUILD_TYPE MATCHES Debug)
 	add_link_options(ecnavda-yobemag "-fsanitize=address -fsanitize=leak -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fstack-protector-all")
 endif()

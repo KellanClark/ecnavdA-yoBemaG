@@ -19,6 +19,8 @@ public:
 	static void lineStartEvent(void *object);
 	static void hBlankEvent(void *object);
 
+	template <int mode, int size> int calculateTilemapIndex(int x, int y);
+	template <int bgNum> void drawBg();
 	void drawScanline();
 
 	u8 readIO(u32 address);
@@ -26,7 +28,6 @@ public:
 
 	std::atomic<bool> updateScreen;
 	uint16_t framebuffer[160][240];
-	int modeCounter; // TODO: replace with scheduler
 
 	union {
 		u8 paletteRam[0x400];
@@ -74,6 +75,66 @@ public:
 		};
 		u16 VCOUNT; // 0x4000006
 	};
+	union {
+		struct {
+			u16 bg0Priority : 2;
+			u16 bg0CharacterBaseBlock : 2;
+			u16 : 2;
+			u16 bg0Mosaic : 1;
+			u16 bg0Bpp : 1;
+			u16 bg0ScreenBaseBlock : 5;
+			u16 : 1;
+			u16 bg0ScreenSize : 2;
+		};
+		u16 BG0CNT; // 0x4000008
+	};
+	union {
+		struct {
+			u16 bg1Priority : 2;
+			u16 bg1CharacterBaseBlock : 2;
+			u16 : 2;
+			u16 bg1Mosaic : 1;
+			u16 bg1Bpp : 1;
+			u16 bg1ScreenBaseBlock : 5;
+			u16 : 1;
+			u16 bg1ScreenSize : 2;
+		};
+		u16 BG1CNT; // 0x400000A
+	};
+	union {
+		struct {
+			u16 bg2Priority : 2;
+			u16 bg2CharacterBaseBlock : 2;
+			u16 : 2;
+			u16 bg2Mosaic : 1;
+			u16 bg2Bpp : 1;
+			u16 bg2ScreenBaseBlock : 5;
+			u16 bg2Wrapping : 1;
+			u16 bg2ScreenSize : 2;
+		};
+		u16 BG2CNT; // 0x400000C
+	};
+	union {
+		struct {
+			u16 bg3Priority : 2;
+			u16 bg3CharacterBaseBlock : 2;
+			u16 : 2;
+			u16 bg3Mosaic : 1;
+			u16 bg3Bpp : 1;
+			u16 bg3ScreenBaseBlock : 5;
+			u16 bg3Wrapping : 1;
+			u16 bg3ScreenSize : 2;
+		};
+		u16 BG3CNT; // 0x400000E
+	};
+	u16 bg0XOffset; // 0x4000010
+	u16 bg0YOffset; // 0x4000012
+	u16 bg1XOffset; // 0x4000014
+	u16 bg1YOffset; // 0x4000016
+	u16 bg2XOffset; // 0x4000018
+	u16 bg2YOffset; // 0x400001A
+	u16 bg3XOffset; // 0x400001C
+	u16 bg3YOffset; // 0x400001E
 };
 
 #endif

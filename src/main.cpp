@@ -29,7 +29,6 @@ std::thread emuThread(&GBACPU::run, std::ref(GBA.cpu));
 // Graphics
 SDL_Window* window;
 GLuint lcdTexture;
-GLuint debugTexture;
 
 // ImGui Windows
 void mainMenuBar();
@@ -155,14 +154,7 @@ int main(int argc, char *argv[]) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-	// Create image for debug display
-	glGenTextures(1, &debugTexture);
-	glBindTexture(GL_TEXTURE_2D, debugTexture);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	initPpuDebug();
 
 	u32 emuThreadTicks = 0;
 	u32 emuThreadTicksLast = 0;
@@ -212,7 +204,7 @@ int main(int argc, char *argv[]) {
 			emuThreadTicksLast = emuThreadTicks;
 			emuThreadTicks = SDL_GetTicks();
 			glBindTexture(GL_TEXTURE_2D, lcdTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB5_A1, 240, 160, 0, GL_BGRA, GL_UNSIGNED_SHORT_5_5_5_1, GBA.ppu.framebuffer);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB5_A1, 240, 160, 0, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, GBA.ppu.framebuffer);
 			GBA.ppu.updateScreen = false;
 		}
 
@@ -235,6 +227,8 @@ int main(int argc, char *argv[]) {
 			memEditorWindow();
 		if (showLayerView)
 			layerViewWindow();
+		if (showTiles)
+			tilesWindow();
 
 		// Console Screen
 		{
@@ -326,6 +320,7 @@ void mainMenuBar() {
 		ImGui::MenuItem("Debug CPU", NULL, &showCpuDebug);
 		ImGui::MenuItem("Memory Editor", NULL, &showMemEditor);
 		ImGui::MenuItem("Inspect Layers", NULL, &showLayerView);
+		ImGui::MenuItem("View Tiles", NULL, &showTiles);
 		ImGui::Separator();
 		ImGui::MenuItem("ImGui Demo", NULL, &showDemoWindow);
 
