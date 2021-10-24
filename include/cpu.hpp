@@ -16,7 +16,6 @@ public:
 	void reset();
 	void run();
 	
-	void stop(u64 cycles);
 	static void stopEvent(void *object);
 
 	enum threadEventType {

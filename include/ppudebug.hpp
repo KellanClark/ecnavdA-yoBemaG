@@ -13,9 +13,12 @@
 #include "gba.hpp"
 
 extern GameBoyAdvance GBA;
-extern GLuint debugTexture;
+
+void initPpuDebug();
 
 extern bool showLayerView;
 void layerViewWindow();
+extern bool showTiles;
+void tilesWindow();
 
 #endif

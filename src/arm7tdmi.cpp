@@ -51,9 +51,7 @@ void ARM7TDMI::resetARM7TDMI() {
 
 	reg.R13_irq = 0x3007FA0;
 	reg.R13_svc = 0x3007FE0;
-	reg.R13_fiq = reg.R13_abt = reg.R13_und = 0;//0x3007FF0;
-
-	//incrementR15 = true;
+	reg.R13_fiq = reg.R13_abt = reg.R13_und = 0x3007FF0;
 }
 
 void ARM7TDMI::cycle() {
@@ -89,7 +87,7 @@ void ARM7TDMI::cycle() {
 		pipelineOpcode1 = bus.read<u32>(reg.R[15]);
 	}
 
-	//if (reg.R[15] == 0x0000008)
+	//if (reg.R[15] == (0x8001B88 + 8)/*(0x80003DA - 4)*/)
 	//	unknownOpcodeArm(pipelineOpcode3, "BKPT");
 }
 
@@ -1089,8 +1087,8 @@ void ARM7TDMI::bankRegisters(cpuMode newMode, bool enterMode) {
 	}
 
 	if (enterMode) {
-		reg.CPSR = (reg.CPSR & ~0x3F) | newMode;
 		reg.R[14] = reg.R[15] - (reg.thumbMode ? 2 : 4);
+		reg.CPSR = (reg.CPSR & ~0x3F) | newMode;
 	}
 }
 
@@ -1386,9 +1384,14 @@ template <bool targetPSR> void ARM7TDMI::psrStoreImmediate(u32 opcode) {
 }
 
 void ARM7TDMI::branchExchange(u32 opcode) {
-	reg.thumbMode = reg.R[opcode & 0xF] & 1;
+	if (reg.R[opcode & 0xF] & 1) {
+		reg.thumbMode = true;
+		reg.R[15] = reg.R[opcode & 0xF] & ~1;
+	} else {
+		reg.thumbMode = false;
+		reg.R[15] = reg.R[opcode & 0xF] & ~3;
+	}
 
-	reg.R[15] = reg.R[opcode & 0xF] & ~3;
 	pipelineStage = 1;
 	incrementR15 = false;
 }
@@ -1932,7 +1935,7 @@ void ARM7TDMI::thumbHighRegOperation(u16 opcode) {
 	case 3: // BX
 		reg.thumbMode = reg.R[operand2] & 1;
 
-		reg.R[15] = reg.R[operand2] & ~1;
+		reg.R[15] = reg.R[operand2] & (reg.thumbMode ? ~1 : ~3);
 		pipelineStage = 1;
 		incrementR15 = false;
 		break;
@@ -2219,7 +2222,7 @@ void ARM7TDMI::thumbLongBranchLink(u16 opcode) {
 	if (lowHigh) {
 		u32 address = reg.R[14] + ((opcode & 0x7FF) << 1);
 		reg.R[14] = (reg.R[15] - 2) | 1;
-		reg.R[15] = address;
+		reg.R[15] = address & ~1;
 		pipelineStage = 1;
 		incrementR15 = false;
 	} else {
