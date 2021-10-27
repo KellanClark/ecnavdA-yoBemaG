@@ -197,7 +197,7 @@ void GBAPPU::drawScanline() {
 		for (int i = 0; i < 240; i++)
 			framebuffer[currentScanline][i] = convertColor(paletteColors[0]);
 
-		for (int layer = 0; layer < 4; layer++) {
+		for (int layer = 3; layer >= 0; layer--) {
 			if ((bg0Priority == layer) && screenDisplayBg0) drawBg<0>();
 			if ((bg1Priority == layer) && screenDisplayBg1) drawBg<1>();
 			if ((bg2Priority == layer) && screenDisplayBg2) drawBg<2>();
@@ -208,7 +208,7 @@ void GBAPPU::drawScanline() {
 		for (int i = 0; i < 240; i++)
 			framebuffer[currentScanline][i] = convertColor(paletteColors[0]);
 
-		for (int layer = 0; layer < 4; layer++) {
+		for (int layer = 3; layer >= 0; layer--) {
 			if ((bg0Priority == layer) && screenDisplayBg0) drawBg<0>();
 			if ((bg1Priority == layer) && screenDisplayBg1) drawBg<1>();
 		}
