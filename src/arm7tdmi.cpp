@@ -1,6 +1,7 @@
 
 #include "arm7tdmi.hpp"
 #include "gba.hpp"
+#include "scheduler.hpp"
 #include "types.hpp"
 #include <bit>
 #include <cstdio>
@@ -20,7 +21,9 @@ ARM7TDMI::ARM7TDMI(GameBoyAdvance& bus_) : bus(bus_) {
 }
 
 void ARM7TDMI::resetARM7TDMI() {
-	IE = IF = IME = 0;
+	IE = 0;
+	IF = 0;
+	IME = false;
 
 	pipelineStage = 0;
 	incrementR15 = false;
@@ -57,24 +60,32 @@ void ARM7TDMI::resetARM7TDMI() {
 }
 
 void ARM7TDMI::cycle() {
-	if (pipelineStage == 3) {
-		if (IME && (IE & IF)) { // Service interrupt
+	if (halted && (IE & IF))
+		halted = false;
+
+	if ((pipelineStage == 3) && !halted) {
+		if (!reg.irqDisable && IME && (IE & IF)) { // Service interrupt
+			bool oldThumb = reg.thumbMode;
 			bankRegisters(MODE_IRQ, true);
-			if (reg.thumbMode)
-				reg.R[14] -= 2;
+			if (oldThumb)
+				reg.R[14] += 2;
+
+			reg.irqDisable = true;
+			reg.fiqDisable = true;
+			reg.thumbMode = false;
 
 			reg.R[15] = 0x18;
 			pipelineStage = 1;
 			incrementR15 = false;
-		}
-
-		if (reg.thumbMode) {
-			u16 lutIndex = pipelineOpcode3 >> 6;
-			(this->*thumbLUT[lutIndex])((u16)pipelineOpcode3);
 		} else {
-			if (checkCondition(pipelineOpcode3 >> 28)) {
-				u32 lutIndex = ((pipelineOpcode3 & 0x0FF00000) >> 16) | ((pipelineOpcode3 & 0x000000F0) >> 4);
-				(this->*LUT[lutIndex])(pipelineOpcode3);
+			if (reg.thumbMode) {
+				u16 lutIndex = pipelineOpcode3 >> 6;
+				(this->*thumbLUT[lutIndex])((u16)pipelineOpcode3);
+			} else {
+				if (checkCondition(pipelineOpcode3 >> 28)) {
+					u32 lutIndex = ((pipelineOpcode3 & 0x0FF00000) >> 16) | ((pipelineOpcode3 & 0x000000F0) >> 4);
+					(this->*LUT[lutIndex])(pipelineOpcode3);
+				}
 			}
 		}
 	} else {
@@ -99,7 +110,7 @@ void ARM7TDMI::cycle() {
 		pipelineOpcode1 = bus.read<u32>(reg.R[15]);
 	}
 
-	//if (reg.R[15] == (0x8001B88 + 8)/*(0x80003DA - 4)*/)
+	//if (reg.R[15] == (0x8008ED0 + 4))
 	//	unknownOpcodeArm(pipelineOpcode3, "BKPT");
 }
 
@@ -1216,12 +1227,16 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 		reg.R[destinationReg] = result;
 		
 		if (destinationReg == 15) {
+			if (sBit)
+				leaveMode();
+
+			reg.R[15] &= reg.thumbMode ? ~1 : ~3;
 			pipelineStage = 1;
 			incrementR15 = false;
 		}
-	}
-	if ((destinationReg == 15) && sBit)
+	} else if ((destinationReg == 15) && sBit) {
 		leaveMode();
+	}
 }
 
 template <bool accumulate, bool sBit>
@@ -1240,12 +1255,12 @@ void ARM7TDMI::multiply(u32 opcode) {
 	reg.R[destinationReg] = result;
 
 	if (destinationReg == 15) {
+		if (sBit)
+			leaveMode();
+
+		reg.R[15] &= reg.thumbMode ? ~1 : ~3;
 		pipelineStage = 1;
 		incrementR15 = false;
-
-		if (sBit) {
-			leaveMode();
-		}
 	}
 }
 
@@ -1272,12 +1287,12 @@ void ARM7TDMI::multiplyLong(u32 opcode) {
 	reg.R[destinationRegHigh] = result >> 32;
 
 	if ((destinationRegLow == 15) || (destinationRegHigh == 15)) {
+		if (sBit)
+			leaveMode();
+
+		reg.R[15] &= reg.thumbMode ? ~1 : ~3;
 		pipelineStage = 1;
 		incrementR15 = false;
-
-		if (sBit) {
-			leaveMode();
-		}
 	}
 }
 
@@ -1303,6 +1318,7 @@ void ARM7TDMI::singleDataSwap(u32 opcode) {
 	}
 
 	if (destinationRegister == 15) {
+		reg.R[15] &= ~3;
 		pipelineStage = 1;
 		incrementR15 = false;
 	}
@@ -1477,6 +1493,7 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 	if (loadStore) {
 		reg.R[srcDestRegister] = result;
 		if (srcDestRegister == 15) {
+			reg.R[15] &= ~3;
 			pipelineStage = 1;
 			incrementR15 = false;
 		}
@@ -1536,6 +1553,7 @@ void ARM7TDMI::singleDataTransfer(u32 opcode) {
 	if (loadStore) {
 		reg.R[srcDestRegister] = result;
 		if (srcDestRegister == 15) {
+			reg.R[15] &= ~3;
 			pipelineStage = 1;
 			incrementR15 = false;
 		}
@@ -1630,8 +1648,11 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 		bankRegisters(oldMode, false);
 		reg.mode = oldMode;
 
-		if (((opcode & (1 << 15)) || emptyRegList) && loadStore)
+		if (((opcode & (1 << 15)) || emptyRegList) && loadStore) {
 			leaveMode();
+
+			reg.R[15] &= reg.thumbMode ? ~1 : ~3;
+		}
 	}
 }
 

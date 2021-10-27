@@ -1,8 +1,7 @@
 
 #include "ppu.hpp"
-#include "imgui.h"
+#include "gba.hpp"
 #include "scheduler.hpp"
-#include "types.hpp"
 #include <array>
 #include <cstdio>
 
@@ -33,9 +32,21 @@ void GBAPPU::lineStartEvent(void *object) {
 	if (ppu->currentScanline == 160) { // VBlank
 		ppu->updateScreen = true;
 		ppu->vBlankFlag = true;
+
+		if (ppu->vBlankIrqEnable)
+			ppu->bus.cpu.requestInterrupt(GBACPU::IRQ_VBLANK);
 	} else if (ppu->currentScanline == 228) { // Start of frame
 		ppu->currentScanline = 0;
 		ppu->vBlankFlag = false;
+	}
+
+	if (ppu->vCountSetting == ppu->currentScanline) {
+		ppu->vCounterFlag = true;
+
+		if (ppu->vCounterIrqEnable)
+			ppu->bus.cpu.requestInterrupt(GBACPU::IRQ_VCOUNT);
+	} else {
+		ppu->vCounterFlag = false;
 	}
 
 	systemEvents.addEvent(1232, lineStartEvent, object);
@@ -46,7 +57,10 @@ void GBAPPU::hBlankEvent(void *object) {
 
 	if (ppu->currentScanline < 160)
 		ppu->drawScanline();
+
 	ppu->hBlankFlag = true;
+	if (ppu->hBlankIrqEnable)
+		ppu->bus.cpu.requestInterrupt(GBACPU::IRQ_HBLANK);
 
 	systemEvents.addEvent(1232, hBlankEvent, object);
 }

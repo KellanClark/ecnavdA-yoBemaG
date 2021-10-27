@@ -17,25 +17,10 @@ public:
 	void resetARM7TDMI();
 	void cycle();
 
-	enum irqType {
-		IRQ_VBLANK = 1 << 0,
-		IRQ_HBLANK = 1 << 1,
-		IRQ_VCOUNT = 1 << 2,
-		IRQ_TIMER0 = 1 << 3,
-		IRQ_TIMER1 = 1 << 4,
-		IRQ_TIMER2 = 1 << 5,
-		IRQ_TIMER3 = 1 << 6,
-		IRQ_COM = 1 << 7,
-		IRQ_DMA0 = 1 << 8,
-		IRQ_DMA1 = 1 << 9,
-		IRQ_DMA2 = 1 << 10,
-		IRQ_DMA3 = 1 << 11,
-		IRQ_KEYPAD = 1 << 12,
-		IRQ_GAMEPAK = 1 << 13
-	};
 	u16 IE;
 	u16 IF;
 	bool IME;
+	bool halted;
 
 	std::string disassemble(u32 address, u32 opcode, bool thumb);
 	std::string getRegName(unsigned int regNumber);

@@ -20,5 +20,7 @@ extern bool showLayerView;
 void layerViewWindow();
 extern bool showTiles;
 void tilesWindow();
+extern bool showPalette;
+void paletteWindow();
 
 #endif

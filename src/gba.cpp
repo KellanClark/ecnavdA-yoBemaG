@@ -1,6 +1,8 @@
 
 #include "gba.hpp"
 #include "arm7tdmi.hpp"
+#include "scheduler.hpp"
+#include <cstdio>
 
 #define toPage(x) (x >> 15)
 
@@ -34,6 +36,7 @@ void GameBoyAdvance::reset() {
 	memset(ewram, 0, sizeof(ewram));
 	memset(iwram, 0, sizeof(iwram));
 	KEYINPUT = 0x1FF;
+	KEYCNT = 0;
 
 	systemEvents.reset();
 	cpu.reset();
@@ -137,19 +140,25 @@ T GameBoyAdvance::read(u32 address) {
 			switch (offset) {
 			case 0x000 ... 0x056: // PPU
 				return ppu.readIO(address);
+
 			case 0x130: // Joypad
 				return (u8)KEYINPUT;
 			case 0x131:
 				return (u8)(KEYINPUT >> 8);
-			case 0x200: // IE
+			case 0x132:
+				return (u8)KEYCNT;
+			case 0x133:
+				return (u8)(KEYCNT >> 8);
+
+			case 0x200: // Interrupts
 				return (u8)cpu.IE;
 			case 0x201:
 				return (u8)(cpu.IE >> 8);
-			case 0x202: // IF
+			case 0x202:
 				return (u8)cpu.IF;
 			case 0x203:
 				return (u8)(cpu.IF >> 8);
-			case 0x208: // IME
+			case 0x208:
 				return (u8)cpu.IME;
 			}
 			break;
@@ -192,20 +201,39 @@ void GameBoyAdvance::write(u32 address, T value) {
 			case 0x000 ... 0x056: // PPU
 				ppu.writeIO(address, value);
 				break;
-			case 0x200: // IE
-				cpu.IE = (cpu.IE & 0x00FF) | ((value & 0x3F) << 8);
+
+			case 0x131: // Joypad
+				KEYCNT = (KEYCNT & 0xFF00) | value;
 				break;
-			case 0x201:
+			case 0x132:
+				KEYCNT = (KEYCNT & 0x00FF) | (value << 8);
+				break;
+
+			case 0x200: // Interrupts
 				cpu.IE = (cpu.IE & 0x3F00) | value;
 				break;
-			case 0x202: // IF
-				cpu.IF = (cpu.IF & 0x00FF) | ((value & 0x3F) << 8);
+			case 0x201:
+				cpu.IE = (cpu.IE & 0x00FF) | ((value & 0x3F) << 8);
+				break;
+			case 0x202:
+				cpu.IF = (cpu.IF & ~value) & 0x3FFF;
 				break;
 			case 0x203:
-				cpu.IF = (cpu.IF & 0x3F00) | value;
+				cpu.IF = (cpu.IF & ~(value << 8)) & 0x3FFF;
 				break;
 			case 0x208:
 				cpu.IME = (bool)value;
+				break;
+			case 0x209:
+			case 0x20A:
+			case 0x20B:
+				break;
+
+			case 0x301: // HALTCNT
+				cpu.halted = (bool)value;
+				break;
+			default:
+				printf("Unknown I/O register write:  %07X  %02X\n", address, value);
 				break;
 			}
 			break;

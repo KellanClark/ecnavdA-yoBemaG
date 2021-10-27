@@ -32,13 +32,15 @@ GLuint lcdTexture;
 
 // ImGui Windows
 void mainMenuBar();
-bool showDemoWindow = true;
+bool showDemoWindow;
 bool showRomInfo;
 void romInfoWindow();
 bool showNoBios;
 void noBiosWindow();
 bool showCpuDebug;
 void cpuDebugWindow();
+bool showSystemLog;
+void systemLogWindow();
 bool showMemEditor;
 void memEditorWindow();
 #include "ppudebug.hpp"
@@ -223,12 +225,16 @@ int main(int argc, char *argv[]) {
 			noBiosWindow();
 		if (showCpuDebug)
 			cpuDebugWindow();
+		if (showSystemLog)
+			systemLogWindow();
 		if (showMemEditor)
 			memEditorWindow();
 		if (showLayerView)
 			layerViewWindow();
 		if (showTiles)
 			tilesWindow();
+		if (showPalette)
+			paletteWindow();
 
 		// Console Screen
 		{
@@ -300,11 +306,6 @@ void mainMenuBar() {
 	}
 
 	if (ImGui::BeginMenu("Emulation")) {
-		if (ImGui::MenuItem("Reset")) {
-			GBA.cpu.addThreadEvent(GBACPU::RESET);
-			GBA.cpu.addThreadEvent(GBACPU::START);
-		}
-
 		if (GBA.cpu.running) {
 			if (ImGui::MenuItem("Pause"))
 				GBA.cpu.addThreadEvent(GBACPU::STOP, 0);
@@ -313,14 +314,21 @@ void mainMenuBar() {
 				GBA.cpu.addThreadEvent(GBACPU::START);
 		}
 
+		if (ImGui::MenuItem("Reset")) {
+			GBA.cpu.addThreadEvent(GBACPU::RESET);
+			GBA.cpu.addThreadEvent(GBACPU::START);
+		}
+
 		ImGui::EndMenu();
 	}
 
 	if (ImGui::BeginMenu("Debug")) {
 		ImGui::MenuItem("Debug CPU", NULL, &showCpuDebug);
+		ImGui::MenuItem("System Log", NULL, &showSystemLog);
 		ImGui::MenuItem("Memory Editor", NULL, &showMemEditor);
 		ImGui::MenuItem("Inspect Layers", NULL, &showLayerView);
 		ImGui::MenuItem("View Tiles", NULL, &showTiles);
+		ImGui::MenuItem("View Palettes", NULL, &showPalette);
 		ImGui::Separator();
 		ImGui::MenuItem("ImGui Demo", NULL, &showDemoWindow);
 
@@ -358,9 +366,6 @@ void noBiosWindow() {
 }
 
 void cpuDebugWindow() {
-	static bool shouldAutoscroll;
-
-	ImGui::SetNextWindowSize(ImVec2(700, 600), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Debug CPU", &showCpuDebug);
 
 	if (ImGui::Button("Reset"))
@@ -406,6 +411,26 @@ void cpuDebugWindow() {
 	ImGui::Text("CPSR: %08X", GBA.cpu.reg.CPSR);
 
 	ImGui::Spacing();
+	bool imeTmp = GBA.cpu.IME;
+	ImGui::Checkbox("IME", &imeTmp);
+	ImGui::SameLine();
+	ImGui::Text("IE: %04X", GBA.cpu.IE);
+	ImGui::SameLine();
+	ImGui::Text("IF: %04X", GBA.cpu.IF);
+
+	ImGui::Spacing();
+	if (ImGui::Button("Show System Log"))
+		showSystemLog = true;
+
+	ImGui::End();
+}
+
+void systemLogWindow() {
+	static bool shouldAutoscroll = true;
+
+	ImGui::SetNextWindowSize(ImVec2(700, 600), ImGuiCond_FirstUseEver);
+	ImGui::Begin("System Log", &showSystemLog);
+
 	ImGui::Checkbox("Auto-scroll", &shouldAutoscroll);
 	ImGui::SameLine();
 	ImGui::Checkbox("Trace Instructions", (bool *)&GBA.cpu.traceInstructions);

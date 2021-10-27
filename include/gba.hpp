@@ -49,6 +49,7 @@ public:
 	u8 ewram[0x40000];
 	u8 iwram[0x8000];
 	u16 KEYINPUT;
+	u16 KEYCNT;
 	std::vector<u8> romBuff;
 
 private:

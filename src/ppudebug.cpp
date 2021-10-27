@@ -138,10 +138,10 @@ void tilesWindow() {
 	if (!highColor) {
 		static char buf[64] = "";
 		ImGui::SetNextItemWidth(40);
-		ImGui::InputText("Palette (0 to 15)", buf, 64, ImGuiInputTextFlags_CharsDecimal);
+		ImGui::InputText("Palette (0 to 31)", buf, 64, ImGuiInputTextFlags_CharsDecimal);
 
 		int newPalette = atoi(buf);
-		if (newPalette < 16) {
+		if (newPalette < 32) {
 			selectedPalette = newPalette << 4;
 		} else {
 			sprintf(buf, "%d", selectedPalette >> 4);
@@ -178,5 +178,49 @@ void tilesWindow() {
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB5_A1, 256, highColor ? 256 : 512, 0, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, debugTilesBuffer);
 	ImGui::Image((void*)(intptr_t)debugTexture, ImVec2(256 * 2, highColor ? 256 : 512 * 2));
 
+	ImGui::End();
+}
+
+#define color555to8888(x) \
+	(((int)((((x & 0x7C00) >> 10) / (float)31) * 255) << 8) | \
+	((int)((((x & 0x03E0) >> 5) / (float)31) * 255) << 16) | \
+	((int)(((x & 0x001F) / (float)31) * 255) << 24) | 0xFF)
+
+bool showPalette;
+void paletteWindow() {
+	static int selectedIndex;
+
+	ImGui::Begin("Palettes", &showPalette);
+
+	ImGui::Text("Color Index:  %d", selectedIndex);
+	ImGui::Text("Memory Location:  0x%07X", 0x5000000 + (selectedIndex * 2));
+	ImGui::Text("Color Data:  0x%04X", GBA.ppu.paletteColors[selectedIndex]);
+
+	ImGui::Text("Background");
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(1, 1));
+
+	for (int y = 0; y < 32; y++) {
+		if (y == 16) {
+			ImGui::PopStyleVar();
+			ImGui::Spacing();
+			ImGui::Text("Sprites");
+			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(1, 1));
+		}
+
+		for (int x = 0; x < 16; x++) {
+			int index = (y * 16) + x;
+			std::string id = "Color " + std::to_string(index);
+			u32 color = color555to8888(GBA.ppu.paletteColors[index]);
+			ImVec4 colorVec = ImVec4((color >> 24) / 255.0f, ((color >> 16) & 0xFF) / 255.0f, ((color >> 8) & 0xFF) / 255.0f, (color & 0xFF) / 255.0f);
+
+			if (ImGui::ColorButton(id.c_str(), colorVec, (selectedIndex == index) ? 0 : ImGuiColorEditFlags_NoBorder, ImVec2(10, 10)))
+				selectedIndex = index;
+
+			if (x != 15)
+				ImGui::SameLine();
+		}
+	}
+
+	ImGui::PopStyleVar();
 	ImGui::End();
 }

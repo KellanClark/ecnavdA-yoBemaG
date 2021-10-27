@@ -3,7 +3,6 @@
 #include "gba.hpp"
 #include "scheduler.hpp"
 #include "types.hpp"
-#include <cstdio>
 
 GBACPU::GBACPU(GameBoyAdvance& bus_) : ARM7TDMI(bus_) {
 	traceInstructions = false;
@@ -35,10 +34,10 @@ void GBACPU::run() { // Emulator thread is run from here
 					std::string logLine;
 					if (reg.thumbMode) {
 						disasm = disassemble(reg.R[15] - 4, pipelineOpcode3, true);
-						logLine = fmt::format("0x{:0>8X} |     0x{:0>4X} | {}\n", reg.R[15] - 4, pipelineOpcode3, disasm);
+						logLine = fmt::format("0x{:0>7X} |     0x{:0>4X} | {}\n", reg.R[15] - 4, pipelineOpcode3, disasm);
 					} else {
 						disasm = disassemble(reg.R[15] - 8, pipelineOpcode3, false);
-						logLine = fmt::format("0x{:0>8X} | 0x{:0>8X} | {}\n", reg.R[15] - 8, pipelineOpcode3, disasm);
+						logLine = fmt::format("0x{:0>7X} | 0x{:0>8X} | {}\n", reg.R[15] - 8, pipelineOpcode3, disasm);
 					}
 
 					if (logLine.compare(previousLogLine)) {
@@ -70,6 +69,10 @@ void GBACPU::run() { // Emulator thread is run from here
 	}
 }
 
+void GBACPU::requestInterrupt(irqType bit) {
+	IF |= bit;
+}
+
 void GBACPU::stopEvent(void *object) {
 	static_cast<GBACPU *>(object)->running = false;
 }
@@ -91,7 +94,7 @@ void GBACPU::processThreadEvents() {
 			bus.reset();
 			break;
 		case UPDATE_KEYINPUT:
-			bus.KEYINPUT = currentEvent.intArg & 0x1FF;
+			bus.KEYINPUT = currentEvent.intArg & 0x3FF;
 			break;
 		default:
 			printf("Unknown thread event:  %d\n", currentEvent.type);
