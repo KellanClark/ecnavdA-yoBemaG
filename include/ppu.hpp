@@ -3,6 +3,7 @@
 #define GBA_PPU_HPP
 
 #include <atomic>
+#include <array>
 #include <cstdio>
 #include <cstring>
 
@@ -19,6 +20,7 @@ public:
 	static void lineStartEvent(void *object);
 	static void hBlankEvent(void *object);
 
+	void drawObjects(int priority);
 	template <int mode, int size> int calculateTilemapIndex(int x, int y);
 	template <int bgNum> void drawBg();
 	void drawScanline();
@@ -29,11 +31,48 @@ public:
 	std::atomic<bool> updateScreen;
 	uint16_t framebuffer[160][240];
 
+	struct __attribute__ ((packed)) Object {
+		union {
+			struct {
+				u16 objY : 8;
+				u16 objMode : 2;
+				u16 gfxMode : 2;
+				u16 mosaic : 1;
+				u16 bpp : 1;
+				u16 shape : 2;
+			};
+			u16 attribute0;
+		};
+		union {
+			struct {
+				u16 objX : 9;
+				u16 : 3;
+				u16 horizontolFlip : 1;
+				u16 verticalFlip : 1;
+				u16 size : 2;
+			};
+			u16 attribute1;
+		};
+		union {
+			struct {
+				u16 tileIndex : 10;
+				u16 priority : 2;
+				u16 palette : 4;
+			};
+			u16 attribute2;
+		};
+		u16 unused;
+	};
+
 	union {
 		u8 paletteRam[0x400];
 		u16 paletteColors[0x200];
 	};
 	u8 vram[0x18000];
+	union {
+		u8 oam[0x400];
+		Object objects[128];
+	};
 
 	// MMIO
 	union {
@@ -42,7 +81,7 @@ public:
 			u16 : 1;
 			u16 displayFrameSelect : 1;
 			u16 hBlankIntervalFree : 1;
-			u16 objCharacterVramMapping : 1;
+			u16 objMappingDimension : 1;
 			u16 forcedBlank : 1;
 			u16 screenDisplayBg0 : 1;
 			u16 screenDisplayBg1 : 1;

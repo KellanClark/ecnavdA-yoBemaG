@@ -91,8 +91,6 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	for (int pageIndex = 0; pageIndex < 0x400; pageIndex++) {
 		u8 *ptr = &romBuff[pageIndex << 15];
 		pageTableRead[pageIndex | 0x1000] = ptr; // 0x0800'0000 - 0x09FF'FFFF
-		pageTableRead[pageIndex | 0x1400] = ptr; // 0x0A00'0000 - 0x0BFF'FFFF
-		pageTableRead[pageIndex | 0x1800] = ptr; // 0x0C00'0000 - 0x0DFF'FFFF
 	}
 
 	cpu.running = true;
@@ -162,8 +160,11 @@ T GameBoyAdvance::read(u32 address) {
 				return (u8)cpu.IME;
 			}
 			break;
-		case toPage(0x5000000) ... toPage(0x6000000):
+		case toPage(0x5000000) ... toPage(0x6000000) - 1:
 			std::memcpy(&val, &ppu.paletteRam[0] + (offset & 0x3FF), sizeof(T));
+			return val;
+		case toPage(0x7000000) ... toPage(0x8000000) - 1:
+			std::memcpy(&val, &ppu.oam[0] + (offset & 0x3FF), sizeof(T));
 			return val;
 		}
 	}
@@ -233,16 +234,24 @@ void GameBoyAdvance::write(u32 address, T value) {
 				cpu.halted = (bool)value;
 				break;
 			default:
-				printf("Unknown I/O register write:  %07X  %02X\n", address, value);
+				//printf("Unknown I/O register write:  %07X  %02X\n", address, value);
 				break;
 			}
 			break;
-		case toPage(0x5000000) ... toPage(0x6000000):
+		case toPage(0x5000000) ... toPage(0x6000000) - 1:
 			if (sizeof(T) == 1) {
 				std::memcpy(&ppu.paletteRam[0] + (offset & 0x3FE), &value, sizeof(T));
 				std::memcpy(&ppu.paletteRam[0] + ((offset & 0x3FE) | 1), &value, sizeof(T));
 			} else {
 				std::memcpy(&ppu.paletteRam[0] + (offset & 0x3FF), &value, sizeof(T));
+			}
+			break;
+		case toPage(0x7000000) ... toPage(0x8000000) - 1:
+			if (sizeof(T) == 1) {
+				std::memcpy(&ppu.oam[0] + (offset & 0x3FE), &value, sizeof(T));
+				std::memcpy(&ppu.oam[0] + ((offset & 0x3FE) | 1), &value, sizeof(T));
+			} else {
+				std::memcpy(&ppu.oam[0] + (offset & 0x3FF), &value, sizeof(T));
 			}
 			break;
 		}

@@ -14,9 +14,10 @@ GBAPPU::GBAPPU(GameBoyAdvance& bus_) : bus(bus_) {
 void GBAPPU::reset() {
 	// Clear screen and memory
 	memset(framebuffer, 0, sizeof(framebuffer));
-	memset(vram, 0, sizeof(vram));
-	memset(paletteRam, 0, sizeof(paletteRam));
 	updateScreen = true;
+	memset(paletteRam, 0, sizeof(paletteRam));
+	memset(vram, 0, sizeof(vram));
+	memset(oam, 0, sizeof(oam));
 
 	currentScanline = 0;
 
@@ -63,6 +64,61 @@ void GBAPPU::hBlankEvent(void *object) {
 		ppu->bus.cpu.requestInterrupt(GBACPU::IRQ_HBLANK);
 
 	systemEvents.addEvent(1232, hBlankEvent, object);
+}
+
+static const int objSizeArray[3][4][2] = {
+	{{8, 8}, {16, 16}, {32, 32}, {64, 64}},
+	{{16, 8}, {32, 8}, {32, 16}, {64, 32}},
+	{{8, 16}, {8, 32}, {16, 32}, {32, 64}}
+};
+
+void GBAPPU::drawObjects(int priority) {
+	int tileRowAddress = 0;
+
+	for (int objNo = 63; objNo >= 0; objNo--) {
+		if ((objects[objNo].priority == priority) && (objects[objNo].objMode != 2)) {
+			Object *obj = &objects[objNo];
+
+			int xSize = objSizeArray[obj->shape][obj->size][0];
+			int ySize = objSizeArray[obj->shape][obj->size][1];
+
+			if ((currentScanline < obj->objY) || (currentScanline >= (obj->objY + ySize)))
+				continue;
+
+			int x = obj->objX;
+			int y = currentScanline - obj->objY;
+			int yMod = obj->verticalFlip ? (7 - (y % 8)) : (y % 8);
+
+			for (int relX = 0; relX < xSize; relX++) {
+				if (x >= 240)
+					break;
+
+				if ((relX % 8) == 0) // Fetch new tile
+					tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - y) : y) / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((obj->horizontolFlip ? (xSize - 1 - relX) : relX) / 8)) * (32 + (32 * obj->bpp))) + (yMod * (4 + (obj->bpp * 4)));
+				if (((tileRowAddress <= 0x14000) && (bgMode >= 3)) || (tileRowAddress >= 0x18000))
+					break;
+
+				u8 tileData;
+				int xMod = obj->horizontolFlip ? (7 - (relX % 8)) : (relX % 8);
+				if (obj->bpp) { // 8 bits per pixel
+					tileData = vram[tileRowAddress + xMod];
+				} else { // 4 bits per pixel
+					tileData = vram[tileRowAddress + (xMod / 2)];
+
+					if (xMod & 1) {
+						tileData >>= 4;
+					} else {
+						tileData &= 0xF;
+					}
+				}
+				if (tileData != 0) {
+					framebuffer[currentScanline][x] = convertColor(paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData]);
+				}
+
+				++x;
+			}
+		}
+	}
 }
 
 template <int bgNum, int size>
@@ -198,10 +254,11 @@ void GBAPPU::drawScanline() {
 			framebuffer[currentScanline][i] = convertColor(paletteColors[0]);
 
 		for (int layer = 3; layer >= 0; layer--) {
-			if ((bg0Priority == layer) && screenDisplayBg0) drawBg<0>();
-			if ((bg1Priority == layer) && screenDisplayBg1) drawBg<1>();
-			if ((bg2Priority == layer) && screenDisplayBg2) drawBg<2>();
 			if ((bg3Priority == layer) && screenDisplayBg3) drawBg<3>();
+			if ((bg2Priority == layer) && screenDisplayBg2) drawBg<2>();
+			if ((bg1Priority == layer) && screenDisplayBg1) drawBg<1>();
+			if ((bg0Priority == layer) && screenDisplayBg0) drawBg<0>();
+			if (screenDisplayObj) drawObjects(layer);
 		}
 		break;
 	case 1:
@@ -209,8 +266,9 @@ void GBAPPU::drawScanline() {
 			framebuffer[currentScanline][i] = convertColor(paletteColors[0]);
 
 		for (int layer = 3; layer >= 0; layer--) {
-			if ((bg0Priority == layer) && screenDisplayBg0) drawBg<0>();
 			if ((bg1Priority == layer) && screenDisplayBg1) drawBg<1>();
+			if ((bg0Priority == layer) && screenDisplayBg0) drawBg<0>();
+			if (screenDisplayObj) drawObjects(layer);
 		}
 		break;
 	case 3:
@@ -219,6 +277,9 @@ void GBAPPU::drawScanline() {
 			u16 vramData = (vram[vramIndex + 1] << 8) | vram[vramIndex];
 			framebuffer[currentScanline][i] = convertColor(vramData);
 		}
+
+		for (int layer = 3; layer >= 0; layer--)
+			if (screenDisplayObj) drawObjects(layer);
 		break;
 	case 4:
 		for (int i = 0; i < 240; i++) {
@@ -226,6 +287,9 @@ void GBAPPU::drawScanline() {
 			u8 vramData = vram[vramIndex];
 			framebuffer[currentScanline][i] = convertColor(paletteColors[vramData]);
 		}
+
+		for (int layer = 3; layer >= 0; layer--)
+			if (screenDisplayObj) drawObjects(layer);
 		break;
 	case 5:
 		for (int x = 0; x < 240; x++) {
@@ -237,10 +301,13 @@ void GBAPPU::drawScanline() {
 				framebuffer[currentScanline][x] = convertColor(paletteColors[0]);
 			}
 		}
+
+		for (int layer = 3; layer >= 0; layer--)
+			if (screenDisplayObj) drawObjects(layer);
 		break;
 	default:
 		for (int i = 0; i < 240; i++)
-			framebuffer[currentScanline][i] = 1; // Draw black
+			framebuffer[currentScanline][i] = 0x8000; // Draw black
 		break;
 	}
 }

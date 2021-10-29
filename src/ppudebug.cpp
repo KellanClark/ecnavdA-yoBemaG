@@ -6,7 +6,7 @@
 #define convertColor(x) (x | 0x8000)
 
 GLuint debugTexture;
-u16 debugBuffer[240 * 160];
+u16 debugBuffer[512 * 512];
 GLuint debugTilesTexture;
 u16 debugTilesBuffer[256 * 512];
 
@@ -28,13 +28,16 @@ void initPpuDebug() {
 }
 
 enum bgLayer {
+	BG0_REGULAR,
+	BG1_REGULAR,
+	BG2_REGULAR,
+	BG3_REGULAR,
 	MODE3_BG2,
 	MODE4_BG2,
 	MODE4_BG2_FLIPPED,
 	MODE5_BG2,
 	MODE5_BG2_FLIPPED
 };
-
 struct layerInfoEntry {
     bgLayer enumValue;
 	std::string name;
@@ -42,6 +45,10 @@ struct layerInfoEntry {
 	int ySize;
 };
 layerInfoEntry layerInfo[] = {
+	{BG0_REGULAR, "Mode 0/1, Background 0, Regular", 512, 512},
+	{BG1_REGULAR, "Mode 0/1, Background 1, Regular", 512, 512},
+	{BG2_REGULAR, "Mode 0, Background 2, Regular", 512, 512},
+	{BG3_REGULAR, "Mode 0, Background 3, Regular", 512, 512},
 	{MODE3_BG2, "Mode 3, Background 2", 240, 160},
 	{MODE4_BG2, "Mode 4, Background 2", 240, 160},
 	{MODE4_BG2_FLIPPED, "Mode 4, Background 2, Flipped", 240, 160},
@@ -51,8 +58,135 @@ layerInfoEntry layerInfo[] = {
 const int layerEntriesNum = sizeof(layerInfo)/sizeof(layerInfoEntry);
 int currentlySelectedLayer = 0;
 
+template <int bgNum, int size>
+int calculateTilemapIndex(int x, int y) {
+	int baseBlock;
+	switch (bgNum) {
+	case 0: baseBlock = GBA.ppu.bg0ScreenBaseBlock; break;
+	case 1: baseBlock = GBA.ppu.bg1ScreenBaseBlock; break;
+	case 2: baseBlock = GBA.ppu.bg2ScreenBaseBlock; break;
+	case 3: baseBlock = GBA.ppu.bg3ScreenBaseBlock; break;
+	}
+
+	int offset;
+	switch (size) {
+	case 0: // 256x256
+		return (baseBlock * 0x800) + (((y % 256) / 8) * 64) + (((x % 256) / 8) * 2);
+	case 1: // 512x256
+		offset = (baseBlock + ((x >> 8) & 1)) * 0x800;
+		return offset + (((y % 256) / 8) * 64) + (((x % 256) / 8) * 2);
+	case 2: // 256x512
+		return (baseBlock * 0x800) + (((y % 512) / 8) * 64) + (((x % 256) / 8) * 2);
+	case 3: // 512x512
+		offset = ((baseBlock + ((x >> 8) & 1)) * 0x800) + (16 * (y & 0x100));
+		return offset + (((y % 256) / 8) * 64) + (((x % 256) / 8) * 2);
+	}
+}
+constexpr int (*tilemapIndexLUTDebug[])(int, int) = {
+	&calculateTilemapIndex<0, 0>,
+	&calculateTilemapIndex<0, 1>,
+	&calculateTilemapIndex<0, 2>,
+	&calculateTilemapIndex<0, 3>,
+	&calculateTilemapIndex<1, 0>,
+	&calculateTilemapIndex<1, 1>,
+	&calculateTilemapIndex<1, 2>,
+	&calculateTilemapIndex<1, 3>,
+	&calculateTilemapIndex<2, 0>,
+	&calculateTilemapIndex<2, 1>,
+	&calculateTilemapIndex<2, 2>,
+	&calculateTilemapIndex<2, 3>,
+	&calculateTilemapIndex<3, 0>,
+	&calculateTilemapIndex<3, 1>,
+	&calculateTilemapIndex<3, 2>,
+	&calculateTilemapIndex<3, 3>
+};
+
+int screenXSize;
+int screenYSize;
 void drawDebugLayer(bgLayer type, u16 *buffer) {
+	screenXSize = layerInfo[currentlySelectedLayer].xSize;
+	screenYSize = layerInfo[currentlySelectedLayer].ySize;
 	switch (type) {
+	case BG0_REGULAR: // Shamefuly copied from the PPU
+	case BG1_REGULAR:
+	case BG2_REGULAR:
+	case BG3_REGULAR: {
+		int screenSize;
+		bool bpp;
+		int characterBaseBlock;
+		switch (type) {
+		case BG0_REGULAR:
+			screenSize = GBA.ppu.bg0ScreenSize;
+			bpp = GBA.ppu.bg0Bpp;
+			characterBaseBlock = GBA.ppu.bg0CharacterBaseBlock;
+			break;
+		case BG1_REGULAR:
+			screenSize = GBA.ppu.bg1ScreenSize;
+			bpp = GBA.ppu.bg1Bpp;
+			characterBaseBlock = GBA.ppu.bg1CharacterBaseBlock;
+			break;
+		case BG2_REGULAR:
+			screenSize = GBA.ppu.bg2ScreenSize;
+			bpp = GBA.ppu.bg2Bpp;
+			characterBaseBlock = GBA.ppu.bg2CharacterBaseBlock;
+			break;
+		case BG3_REGULAR:
+			screenSize = GBA.ppu.bg3ScreenSize;
+			bpp = GBA.ppu.bg3Bpp;
+			characterBaseBlock = GBA.ppu.bg3CharacterBaseBlock;
+			break;
+		default: // Get the compiler to shut up
+			screenSize = 0;
+			bpp = 0;
+			characterBaseBlock = 0;
+			break;
+		}
+
+		int paletteBank = 0;
+		bool verticalFlip = false;
+		bool horizontolFlip = false;
+		int tileIndex = 0;
+		int tileRowAddress = 0;
+
+		screenXSize = 256 << (screenSize & 1);
+		screenYSize = 256 << ((screenSize >> 1) & 1);
+
+		for (int y = 0; y < screenYSize; y++) {
+			for (int x = 0; x < screenXSize; x++) {
+				if ((x % 8) == 0) { // Fetch new tile
+					int tilemapIndex = (*tilemapIndexLUTDebug[(type * 4) + screenSize])(x, y);
+
+					u16 tilemapEntry = (GBA.ppu.vram[tilemapIndex + 1] << 8) | GBA.ppu.vram[tilemapIndex];
+					paletteBank = (tilemapEntry >> 8) & 0xF0;
+					verticalFlip = tilemapEntry & 0x0800;
+					horizontolFlip = tilemapEntry & 0x0400;
+					tileIndex = tilemapEntry & 0x3FF;
+
+					int yMod = verticalFlip ? (7 - (y % 8)) : (y % 8);
+					tileRowAddress = (characterBaseBlock * 0x4000) + (tileIndex * (32 + (32 * bpp))) + (yMod * (4 + (bpp * 4)));
+				}
+
+				u8 tileData;
+				int xMod = horizontolFlip ? (7 - (x % 8)) : (x % 8);
+				if (bpp) { // 8 bits per pixel
+					tileData = GBA.ppu.vram[tileRowAddress + xMod];
+				} else { // 4 bits per pixel
+					tileData = GBA.ppu.vram[tileRowAddress + (xMod / 2)];
+
+					if (xMod & 1) {
+						tileData >>= 4;
+					} else {
+						tileData &= 0xF;
+					}
+				}
+				if (tileData != 0) {
+					debugBuffer[(y * screenXSize) + x] = convertColor(GBA.ppu.paletteColors[(paletteBank * !bpp) | tileData]);
+				} else {
+					debugBuffer[(y * screenXSize) + x] = convertColor(GBA.ppu.paletteColors[0]);
+				}
+			}
+		}
+		} break;
 	case MODE3_BG2:
 		for (int line = 0; line < 160; line++) {
 			for (int x = 0; x < 240; x++) {
@@ -63,36 +197,20 @@ void drawDebugLayer(bgLayer type, u16 *buffer) {
 		}
 		break;
 	case MODE4_BG2:
-		for (int line = 0; line < 160; line++) {
-			for (int x = 0; x < 240; x++) {
-				auto vramIndex = (line * 240) + x;
-				u8 vramData = GBA.ppu.vram[vramIndex];
-				buffer[(line * 240) + x] = convertColor(GBA.ppu.paletteColors[vramData]);
-			}
-		}
-		break;
 	case MODE4_BG2_FLIPPED:
 		for (int line = 0; line < 160; line++) {
 			for (int x = 0; x < 240; x++) {
-				auto vramIndex = (line * 240) + x + 0xA000;
+				auto vramIndex = (line * 240) + x + ((type == MODE4_BG2_FLIPPED) * 0xA000);
 				u8 vramData = GBA.ppu.vram[vramIndex];
 				buffer[(line * 240) + x] = convertColor(GBA.ppu.paletteColors[vramData]);
 			}
 		}
 		break;
 	case MODE5_BG2:
-		for (int line = 0; line < 128; line++) {
-			for (int x = 0; x < 160; x++) {
-				auto vramIndex = ((line * 160) + x) * 2;
-				u16 vramData = (GBA.ppu.vram[vramIndex + 1] << 8) | GBA.ppu.vram[vramIndex];
-				buffer[(line * 160) + x] = convertColor(vramData);
-			}
-		}
-		break;
 	case MODE5_BG2_FLIPPED:
 		for (int line = 0; line < 128; line++) {
 			for (int x = 0; x < 160; x++) {
-				auto vramIndex = (((line * 160) + x) * 2) + 0xA000;
+				auto vramIndex = (((line * 160) + x) * 2) + ((type == MODE5_BG2_FLIPPED) * 0xA000);
 				u16 vramData = (GBA.ppu.vram[vramIndex + 1] << 8) | GBA.ppu.vram[vramIndex];
 				buffer[(line * 160) + x] = convertColor(vramData);
 			}
@@ -121,8 +239,8 @@ void layerViewWindow() {
 
 	drawDebugLayer(layerInfo[currentlySelectedLayer].enumValue, debugBuffer);
 	glBindTexture(GL_TEXTURE_2D, debugTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB5_A1, layerInfo[currentlySelectedLayer].xSize, layerInfo[currentlySelectedLayer].ySize, 0, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, debugBuffer);
-	ImGui::Image((void*)(intptr_t)debugTexture, ImVec2(layerInfo[currentlySelectedLayer].xSize * 2, layerInfo[currentlySelectedLayer].ySize * 2));
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB5_A1, screenXSize, screenYSize, 0, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, debugBuffer);
+	ImGui::Image((void*)(intptr_t)debugTexture, ImVec2(screenXSize * 2, screenYSize * 2));
 
 	ImGui::End();
 }
