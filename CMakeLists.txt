@@ -45,15 +45,13 @@ target_compile_options(ecnavda-yobemag PRIVATE
 	-MMD
 	-MP
 	-Wall
-	-O3
-	-g
-	-fsanitize=address
+#[[	-fsanitize=address
 	-fsanitize=leak
 	-fsanitize=pointer-compare
 	-fsanitize=pointer-subtract
 	-fsanitize=undefined
 	-fstack-protector-all
-	#-fsanitize=thread
+	#-fsanitize=thread]]
 )
 
 target_link_libraries(ecnavda-yobemag PRIVATE
@@ -66,20 +64,16 @@ target_link_libraries(ecnavda-yobemag PRIVATE
 	-lGL
 	-lm
 	-lpthread
-	-fsanitize=address
+#[[	-fsanitize=address
 	-fsanitize=leak
 	-fsanitize=undefined
 	-fsanitize=pointer-compare
 	-fsanitize=pointer-subtract
 	-fstack-protector-all
-	#-fsanitize=thread
+	#-fsanitize=thread]]
 )
 
-#set(CMAKE_CXX_FLAGS_DEBUG "-g -Og")
-#set(CMAKE_CXX_FLAGS_DEBUG "-g -Og -fsanitize=address -fsanitize=leak -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fstack-protector-all")
-#if(CMAKE_BUILD_TYPE MATCHES Debug)
-#	add_link_options(ecnavda-yobemag "-fsanitize=address -fsanitize=leak -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fstack-protector-all")
-#endif()
-#set(CMAKE_CXX_FLAGS_RELEASE "-O3")
-#set(CMAKE_CXX_FLAGS_MINSIZEREL "-Os")
-#set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g -O3")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -Og")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_CXX_FLAGS_MINSIZEREL "-Os")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g -O3")

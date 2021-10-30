@@ -2,6 +2,7 @@
 #include "ppu.hpp"
 #include "gba.hpp"
 #include "scheduler.hpp"
+#include "types.hpp"
 #include <array>
 #include <cstdio>
 
@@ -75,47 +76,51 @@ static const int objSizeArray[3][4][2] = {
 void GBAPPU::drawObjects(int priority) {
 	int tileRowAddress = 0;
 
-	for (int objNo = 63; objNo >= 0; objNo--) {
+	for (int objNo = 127; objNo >= 0; objNo--) {
 		if ((objects[objNo].priority == priority) && (objects[objNo].objMode != 2)) {
 			Object *obj = &objects[objNo];
 
 			int xSize = objSizeArray[obj->shape][obj->size][0];
 			int ySize = objSizeArray[obj->shape][obj->size][1];
 
-			if ((currentScanline < obj->objY) || (currentScanline >= (obj->objY + ySize)))
-				continue;
-
-			int x = obj->objX;
-			int y = currentScanline - obj->objY;
+			unsigned int x = obj->objX;
+			u8 y = currentScanline - obj->objY;
 			int yMod = obj->verticalFlip ? (7 - (y % 8)) : (y % 8);
 
+			if ((obj->objY + ySize) > 255) {
+				if ((currentScanline < obj->objY) && (currentScanline >= (u8)(obj->objY + ySize)))
+					continue;
+			} else {
+				if ((currentScanline < obj->objY) || (currentScanline >= (obj->objY + ySize)))
+					continue;
+			}
+
 			for (int relX = 0; relX < xSize; relX++) {
-				if (x >= 240)
-					break;
+				if (x < 240) {
+					if (((relX % 8) == 0) || (x == 0)) // Fetch new tile
+						tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - y) : y) / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((obj->horizontolFlip ? (xSize - 1 - relX) : relX) / 8)) * (32 + (32 * obj->bpp))) + (yMod * (4 + (obj->bpp * 4)));
+					if (((tileRowAddress <= 0x14000) && (bgMode >= 3)) || (tileRowAddress >= 0x18000))
+						break;
 
-				if ((relX % 8) == 0) // Fetch new tile
-					tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - y) : y) / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((obj->horizontolFlip ? (xSize - 1 - relX) : relX) / 8)) * (32 + (32 * obj->bpp))) + (yMod * (4 + (obj->bpp * 4)));
-				if (((tileRowAddress <= 0x14000) && (bgMode >= 3)) || (tileRowAddress >= 0x18000))
-					break;
+					u8 tileData;
+					int xMod = obj->horizontolFlip ? (7 - (relX % 8)) : (relX % 8);
+					if (obj->bpp) { // 8 bits per pixel
+						tileData = vram[tileRowAddress + xMod];
+					} else { // 4 bits per pixel
+						tileData = vram[tileRowAddress + (xMod / 2)];
 
-				u8 tileData;
-				int xMod = obj->horizontolFlip ? (7 - (relX % 8)) : (relX % 8);
-				if (obj->bpp) { // 8 bits per pixel
-					tileData = vram[tileRowAddress + xMod];
-				} else { // 4 bits per pixel
-					tileData = vram[tileRowAddress + (xMod / 2)];
-
-					if (xMod & 1) {
-						tileData >>= 4;
-					} else {
-						tileData &= 0xF;
+						if (xMod & 1) {
+							tileData >>= 4;
+						} else {
+							tileData &= 0xF;
+						}
 					}
-				}
-				if (tileData != 0) {
-					framebuffer[currentScanline][x] = convertColor(paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData]);
+					if (tileData != 0)
+						framebuffer[currentScanline][x] = convertColor(paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData]);
+					//framebuffer[currentScanline][x] = 0x8000;
 				}
 
-				++x;
+				x = (x + 1) & 0x1FF;
 			}
 		}
 	}
