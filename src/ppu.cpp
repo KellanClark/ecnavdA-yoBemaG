@@ -73,54 +73,74 @@ static const int objSizeArray[3][4][2] = {
 	{{8, 16}, {8, 32}, {16, 32}, {32, 64}}
 };
 
-void GBAPPU::drawObjects(int priority) {
+void GBAPPU::drawObjects() {
 	int tileRowAddress = 0;
 
-	for (int objNo = 127; objNo >= 0; objNo--) {
-		if ((objects[objNo].priority == priority) && (objects[objNo].objMode != 2)) {
-			Object *obj = &objects[objNo];
+	for (int priority = 3; priority >= 0; priority--) {
+		for (int i = 0; i < 240; i++)
+			lineBuffer[4 + priority][i].priority = -1;
 
-			int xSize = objSizeArray[obj->shape][obj->size][0];
-			int ySize = objSizeArray[obj->shape][obj->size][1];
+		for (int objNo = 127; objNo >= 0; objNo--) {
+			if ((objects[objNo].priority == priority) && (objects[objNo].objMode != 2)) {
+				Object *obj = &objects[objNo];
 
-			unsigned int x = obj->objX;
-			u8 y = currentScanline - obj->objY;
-			int yMod = obj->verticalFlip ? (7 - (y % 8)) : (y % 8);
+				int xSize = objSizeArray[obj->shape][obj->size][0];
+				int ySize = objSizeArray[obj->shape][obj->size][1];
 
-			if ((obj->objY + ySize) > 255) {
-				if ((currentScanline < obj->objY) && (currentScanline >= (u8)(obj->objY + ySize)))
-					continue;
-			} else {
-				if ((currentScanline < obj->objY) || (currentScanline >= (obj->objY + ySize)))
-					continue;
-			}
+				unsigned int x = obj->objX;
+				u8 y = currentScanline - obj->objY;
+				int yMod = obj->verticalFlip ? (7 - (y % 8)) : (y % 8);
 
-			for (int relX = 0; relX < xSize; relX++) {
-				if (x < 240) {
-					if (((relX % 8) == 0) || (x == 0)) // Fetch new tile
-						tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - y) : y) / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((obj->horizontolFlip ? (xSize - 1 - relX) : relX) / 8)) * (32 + (32 * obj->bpp))) + (yMod * (4 + (obj->bpp * 4)));
-					if (((tileRowAddress <= 0x14000) && (bgMode >= 3)) || (tileRowAddress >= 0x18000))
-						break;
-
-					u8 tileData;
-					int xMod = obj->horizontolFlip ? (7 - (relX % 8)) : (relX % 8);
-					if (obj->bpp) { // 8 bits per pixel
-						tileData = vram[tileRowAddress + xMod];
-					} else { // 4 bits per pixel
-						tileData = vram[tileRowAddress + (xMod / 2)];
-
-						if (xMod & 1) {
-							tileData >>= 4;
-						} else {
-							tileData &= 0xF;
-						}
-					}
-					if (tileData != 0)
-						framebuffer[currentScanline][x] = convertColor(paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData]);
-					//framebuffer[currentScanline][x] = 0x8000;
+				if ((obj->objY + ySize) > 255) {
+					if ((currentScanline < obj->objY) && (currentScanline >= (u8)(obj->objY + ySize)))
+						continue;
+				} else {
+					if ((currentScanline < obj->objY) || (currentScanline >= (obj->objY + ySize)))
+						continue;
 				}
 
-				x = (x + 1) & 0x1FF;
+				for (int relX = 0; relX < xSize; relX++) {
+					if (x < 240) {
+						if (((relX % 8) == 0) || (x == 0)) // Fetch new tile
+							tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - y) : y) / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((obj->horizontolFlip ? (xSize - 1 - relX) : relX) / 8)) * (32 + (32 * obj->bpp))) + (yMod * (4 + (obj->bpp * 4)));
+						if (((tileRowAddress <= 0x14000) && (bgMode >= 3)) || (tileRowAddress >= 0x18000))
+							break;
+
+						u8 tileData;
+						int xMod = obj->horizontolFlip ? (7 - (relX % 8)) : (relX % 8);
+						if (obj->bpp) { // 8 bits per pixel
+							tileData = vram[tileRowAddress + xMod];
+						} else { // 4 bits per pixel
+							tileData = vram[tileRowAddress + (xMod / 2)];
+
+							if (xMod & 1) {
+								tileData >>= 4;
+							} else {
+								tileData &= 0xF;
+							}
+						}
+
+						Pixel *pix = &lineBuffer[4 + priority][x];
+						pix->inWin0 = false;
+						pix->inWin1 = false;
+						pix->inWinOut = false;
+
+						if (window0DisplayFlag)
+							if ((x >= win0Left) && (x < win0Right) && (currentScanline >= win0Top) && (currentScanline < win0Bottom))
+								pix->inWin0 = true;
+						if (window1DisplayFlag)
+							if ((x >= win1Left) && (x < win1Right) && (currentScanline >= win1Top) && (currentScanline < win1Bottom))
+								pix->inWin1 = true;
+						pix->inWinOut = !(pix->inWin0 || pix->inWin1);
+						
+						if (tileData != 0) {
+							pix->priority = priority;
+							pix->color = convertColor(paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData]);
+						}
+					}
+
+					x = (x + 1) & 0x1FF;
+				}
 			}
 		}
 	}
@@ -244,9 +264,22 @@ void GBAPPU::drawBg() {
 				tileData &= 0xF;
 			}
 		}
-		if (tileData != 0) {
-			framebuffer[currentScanline][i] = convertColor(paletteColors[(paletteBank * !bpp) | tileData]);
-		}
+
+		Pixel *pix = &lineBuffer[bgNum][i];
+		pix->inWin0 = false;
+		pix->inWin1 = false;
+		pix->inWinOut = false;
+
+		if (window0DisplayFlag)
+			if ((i >= win0Left) && (i < win0Right) && (currentScanline >= win0Top) && (currentScanline < win0Bottom))
+				pix->inWin0 = true;
+		if (window1DisplayFlag)
+			if ((i >= win1Left) && (i < win1Right) && (currentScanline >= win1Top) && (currentScanline < win1Bottom))
+				pix->inWin1 = true;
+		pix->inWinOut = !(pix->inWin0 || pix->inWin1);
+
+		pix->priority = (tileData == 0) ? -1 : bgNum;
+		pix->color = convertColor(paletteColors[(paletteBank * !bpp) | tileData]);
 
 		++x;
 	}
@@ -255,48 +288,128 @@ void GBAPPU::drawBg() {
 void GBAPPU::drawScanline() {
 	switch (bgMode) {
 	case 0:
-		for (int i = 0; i < 240; i++)
-			framebuffer[currentScanline][i] = convertColor(paletteColors[0]);
+		if (screenDisplayBg3) drawBg<3>();
+		if (screenDisplayBg2) drawBg<2>();
+		if (screenDisplayBg1) drawBg<1>();
+		if (screenDisplayBg0) drawBg<0>();
+		if (screenDisplayObj) drawObjects();
 
-		for (int layer = 3; layer >= 0; layer--) {
-			if ((bg3Priority == layer) && screenDisplayBg3) drawBg<3>();
-			if ((bg2Priority == layer) && screenDisplayBg2) drawBg<2>();
-			if ((bg1Priority == layer) && screenDisplayBg1) drawBg<1>();
-			if ((bg0Priority == layer) && screenDisplayBg0) drawBg<0>();
-			if (screenDisplayObj) drawObjects(layer);
+		for (int i = 0; i < 240; i++) {
+			mergedBuffer[i].color = convertColor(paletteColors[0]);
+
+			// Window
+			if (window0DisplayFlag || window1DisplayFlag) {
+				for (int layer = 3; layer >= 0; layer--) {
+					if (lineBuffer[3][i].inWinOut && winOutBg3Enable && (bg3Priority == layer) && screenDisplayBg3 && (lineBuffer[3][i].priority != -1)) mergedBuffer[i] = lineBuffer[3][i];
+					if (lineBuffer[2][i].inWinOut && winOutBg2Enable && (bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
+					if (lineBuffer[1][i].inWinOut && winOutBg1Enable && (bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
+					if (lineBuffer[0][i].inWinOut && winOutBg0Enable && (bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
+					if (lineBuffer[4 + layer][i].inWinOut && winOutObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+				}
+
+				if (window1DisplayFlag) {
+					for (int layer = 3; layer >= 0; layer--) {
+						if (lineBuffer[3][i].inWin1 && !lineBuffer[3][i].inWin0 && win1Bg3Enable && (bg3Priority == layer) && screenDisplayBg3 && (lineBuffer[3][i].priority != -1)) mergedBuffer[i] = lineBuffer[3][i];
+						if (lineBuffer[2][i].inWin1 && !lineBuffer[2][i].inWin0 && win1Bg2Enable && (bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
+						if (lineBuffer[1][i].inWin1 && !lineBuffer[1][i].inWin0 && win1Bg1Enable && (bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
+						if (lineBuffer[0][i].inWin1 && !lineBuffer[0][i].inWin0 && win1Bg0Enable && (bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
+						if (lineBuffer[4 + layer][i].inWin1 && !lineBuffer[4 + layer][i].inWin0 && win1ObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+					}
+				}
+
+				if (window0DisplayFlag) {
+					for (int layer = 3; layer >= 0; layer--) {
+						if (lineBuffer[3][i].inWin0 && win0Bg3Enable && (bg3Priority == layer) && screenDisplayBg3 && (lineBuffer[3][i].priority != -1)) mergedBuffer[i] = lineBuffer[3][i];
+						if (lineBuffer[2][i].inWin0 && win0Bg2Enable && (bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
+						if (lineBuffer[1][i].inWin0 && win0Bg1Enable && (bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
+						if (lineBuffer[0][i].inWin0 && win0Bg0Enable && (bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
+						if (lineBuffer[4 + layer][i].inWin0 && win0ObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+					}
+				}
+			} else {
+				for (int layer = 3; layer >= 0; layer--) {
+					if ((bg3Priority == layer) && screenDisplayBg3 && (lineBuffer[3][i].priority != -1)) mergedBuffer[i] = lineBuffer[3][i];
+					if ((bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
+					if ((bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
+					if ((bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
+					if (screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+				}
+			}
+
+			framebuffer[currentScanline][i] = mergedBuffer[i].color;
 		}
 		break;
 	case 1:
-		for (int i = 0; i < 240; i++)
-			framebuffer[currentScanline][i] = convertColor(paletteColors[0]);
+		if (screenDisplayBg0) drawBg<0>();
+		if (screenDisplayBg1) drawBg<1>();
+		
+		if (screenDisplayObj) drawObjects();
 
-		for (int layer = 3; layer >= 0; layer--) {
-			if ((bg1Priority == layer) && screenDisplayBg1) drawBg<1>();
-			if ((bg0Priority == layer) && screenDisplayBg0) drawBg<0>();
-			if (screenDisplayObj) drawObjects(layer);
+		for (int i = 0; i < 240; i++) {
+			mergedBuffer[i].color = convertColor(paletteColors[0]);
+
+			// Window
+			if (window0DisplayFlag || window1DisplayFlag) {
+				for (int layer = 3; layer >= 0; layer--) {
+					if (lineBuffer[1][i].inWinOut && winOutBg1Enable && (bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
+					if (lineBuffer[0][i].inWinOut && winOutBg0Enable && (bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
+					if (lineBuffer[4 + layer][i].inWinOut && winOutObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+				}
+
+				if (window1DisplayFlag) {
+					for (int layer = 3; layer >= 0; layer--) {
+						if (lineBuffer[1][i].inWin1 && !lineBuffer[1][i].inWin0 && win1Bg1Enable && (bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
+						if (lineBuffer[0][i].inWin1 && !lineBuffer[0][i].inWin0 && win1Bg0Enable && (bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
+						if (lineBuffer[4 + layer][i].inWin1 && !lineBuffer[4 + layer][i].inWin0 && win1ObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+					}
+				}
+
+				if (window0DisplayFlag) {
+					for (int layer = 3; layer >= 0; layer--) {
+						if (lineBuffer[1][i].inWin0 && win0Bg1Enable && (bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
+						if (lineBuffer[0][i].inWin0 && win0Bg0Enable && (bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
+						if (lineBuffer[4 + layer][i].inWin0 && win0ObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+					}
+				}
+			} else {
+				for (int layer = 3; layer >= 0; layer--) {
+					if ((bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
+					if ((bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
+					if (screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+				}
+			}
+
+			framebuffer[currentScanline][i] = mergedBuffer[i].color;
 		}
 		break;
 	case 3:
+		drawObjects();
 		for (int i = 0; i < 240; i++) {
 			auto vramIndex = ((currentScanline * 240) + i) * 2;
 			u16 vramData = (vram[vramIndex + 1] << 8) | vram[vramIndex];
 			framebuffer[currentScanline][i] = convertColor(vramData);
-		}
 
-		for (int layer = 3; layer >= 0; layer--)
-			if (screenDisplayObj) drawObjects(layer);
+			for (int layer = 3; layer >= 0; layer--) {
+				if (screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1))
+					framebuffer[currentScanline][i] = lineBuffer[4 + layer][i].color;
+			}
+		}
 		break;
 	case 4:
+		drawObjects();
 		for (int i = 0; i < 240; i++) {
 			auto vramIndex = ((currentScanline * 240) + i) + (displayFrameSelect * 0xA000);
 			u8 vramData = vram[vramIndex];
 			framebuffer[currentScanline][i] = convertColor(paletteColors[vramData]);
-		}
 
-		for (int layer = 3; layer >= 0; layer--)
-			if (screenDisplayObj) drawObjects(layer);
+			for (int layer = 3; layer >= 0; layer--) {
+				if (screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1))
+					framebuffer[currentScanline][i] = lineBuffer[4 + layer][i].color;
+			}
+		}
 		break;
 	case 5:
+		drawObjects();
 		for (int x = 0; x < 240; x++) {
 			if ((x < 160) && (currentScanline < 128)) {
 				auto vramIndex = (((currentScanline * 160) + x) * 2) + (displayFrameSelect * 0xA000);
@@ -305,10 +418,12 @@ void GBAPPU::drawScanline() {
 			} else {
 				framebuffer[currentScanline][x] = convertColor(paletteColors[0]);
 			}
-		}
 
-		for (int layer = 3; layer >= 0; layer--)
-			if (screenDisplayObj) drawObjects(layer);
+			for (int layer = 3; layer >= 0; layer--) {
+				if (screenDisplayObj && (lineBuffer[4 + layer][x].priority != -1))
+					framebuffer[currentScanline][x] = lineBuffer[4 + layer][x].color;
+			}
+		}
 		break;
 	default:
 		for (int i = 0; i < 240; i++)
@@ -347,6 +462,14 @@ u8 GBAPPU::readIO(u32 address) {
 		return (u8)BG3CNT;
 	case 0x400000F:
 		return (u8)(BG3CNT >> 8);
+	case 0x4000048:
+		return (u8)WININ;
+	case 0x4000049:
+		return (u8)(WININ >> 8);
+	case 0x400004A:
+		return (u8)WINOUT;
+	case 0x400004B:
+		return (u8)(WINOUT >> 8);
 	default:
 		return 0;
 	}
@@ -437,6 +560,42 @@ void GBAPPU::writeIO(u32 address, u8 value) {
 		break;
 	case 0x400001F:
 		bg3YOffset = (bg3YOffset & 0x00FF) | ((value & 1) << 8);
+		break;
+	case 0x4000040:
+		WIN0H = (WIN0H & 0xFF00) | value;
+		break;
+	case 0x4000041:
+		WIN0H = (WIN0H & 0x00FF) | (value << 8);
+		break;
+	case 0x4000042:
+		WIN1H = (WIN1H & 0xFF00) | value;
+		break;
+	case 0x4000043:
+		WIN1H = (WIN1H & 0x00FF) | (value << 8);
+		break;
+	case 0x4000044:
+		WIN0V = (WIN0V & 0xFF00) | value;
+		break;
+	case 0x4000045:
+		WIN0V = (WIN0V & 0x00FF) | (value << 8);
+		break;
+	case 0x4000046:
+		WIN1V = (WIN1V & 0xFF00) | value;
+		break;
+	case 0x4000047:
+		WIN1V = (WIN1V & 0x00FF) | (value << 8);
+		break;
+	case 0x4000048:
+		WININ = (WININ & 0x3F00) | (value & 0x3F);
+		break;
+	case 0x4000049:
+		WININ = (WININ & 0x003F) | ((value & 0x3F) << 8);
+		break;
+	case 0x400004A:
+		WINOUT = (WINOUT & 0x3F00) | (value & 0x3F);
+		break;
+	case 0x400004B:
+		WINOUT = (WINOUT & 0x003F) | ((value & 0x3F) << 8);
 		break;
 	}
 }

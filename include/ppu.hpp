@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <array>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -20,7 +21,7 @@ public:
 	static void lineStartEvent(void *object);
 	static void hBlankEvent(void *object);
 
-	void drawObjects(int priority);
+	void drawObjects();
 	template <int mode, int size> int calculateTilemapIndex(int x, int y);
 	template <int bgNum> void drawBg();
 	void drawScanline();
@@ -30,6 +31,16 @@ public:
 
 	std::atomic<bool> updateScreen;
 	uint16_t framebuffer[160][240];
+
+	struct Pixel {
+		int priority;
+		u16 color;
+		bool inWin0;
+		bool inWin1;
+		bool inWinOut;
+	};
+	Pixel lineBuffer[8][240];
+	Pixel mergedBuffer[240];
 
 	struct __attribute__ ((packed)) Object {
 		union {
@@ -174,6 +185,72 @@ public:
 	u16 bg2YOffset; // 0x400001A
 	u16 bg3XOffset; // 0x400001C
 	u16 bg3YOffset; // 0x400001E
+	union {
+		struct {
+			u16 win0Right : 8;
+			u16 win0Left : 8;
+		};
+		u16 WIN0H; // 0x4000040
+	};
+	union {
+		struct {
+			u16 win1Right : 8;
+			u16 win1Left : 8;
+		};
+		u16 WIN1H; // 0x4000042
+	};
+	union {
+		struct {
+			u16 win0Bottom : 8;
+			u16 win0Top : 8;
+		};
+		u16 WIN0V; // 0x4000044
+	};
+	union {
+		struct {
+			u16 win1Bottom : 8;
+			u16 win1Top : 8;
+		};
+		u16 WIN1V; // 0x4000046
+	};
+	union {
+		struct {
+			u16 win0Bg0Enable : 1;
+			u16 win0Bg1Enable : 1;
+			u16 win0Bg2Enable : 1;
+			u16 win0Bg3Enable : 1;
+			u16 win0ObjEnable : 1;
+			u16 win0BldEnable : 1;
+			u16 : 2;
+			u16 win1Bg0Enable : 1;
+			u16 win1Bg1Enable : 1;
+			u16 win1Bg2Enable : 1;
+			u16 win1Bg3Enable : 1;
+			u16 win1ObjEnable : 1;
+			u16 win1BldEnable : 1;
+			u16 : 2;
+		};
+		u16 WININ; // 0x4000048
+	};
+	union {
+		struct {
+			u16 winOutBg0Enable : 1;
+			u16 winOutBg1Enable : 1;
+			u16 winOutBg2Enable : 1;
+			u16 winOutBg3Enable : 1;
+			u16 winOutObjEnable : 1;
+			u16 winOutBldEnable : 1;
+			u16 : 2;
+			u16 winObjBg0Enable : 1;
+			u16 winObjBg1Enable : 1;
+			u16 winObjBg2Enable : 1;
+			u16 winObjBg3Enable : 1;
+			u16 winObjObjEnable : 1;
+			u16 winObjBldEnable : 1;
+			u16 : 2;
+		};
+		u16 WINOUT; // 0x400004A
+	};
 };
 
 #endif
