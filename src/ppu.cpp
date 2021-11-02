@@ -2,7 +2,6 @@
 #include "ppu.hpp"
 #include "gba.hpp"
 #include "scheduler.hpp"
-#include "types.hpp"
 #include <array>
 #include <cstdio>
 
@@ -27,44 +26,53 @@ void GBAPPU::reset() {
 }
 
 void GBAPPU::lineStartEvent(void *object) {
-	GBAPPU *ppu = static_cast<GBAPPU *>(object);
+	static_cast<GBAPPU *>(object)->lineStart();
+}
 
-	ppu->hBlankFlag = false;
-	++ppu->currentScanline;
-	if (ppu->currentScanline == 160) { // VBlank
-		ppu->updateScreen = true;
-		ppu->vBlankFlag = true;
+void GBAPPU::lineStart() {
+	hBlankFlag = false;
+	++currentScanline;
+	if (currentScanline == 160) { // VBlank
+		updateScreen = true;
+		vBlankFlag = true;
 
-		if (ppu->vBlankIrqEnable)
-			ppu->bus.cpu.requestInterrupt(GBACPU::IRQ_VBLANK);
-	} else if (ppu->currentScanline == 228) { // Start of frame
-		ppu->currentScanline = 0;
-		ppu->vBlankFlag = false;
+		if (vBlankIrqEnable)
+			bus.cpu.requestInterrupt(GBACPU::IRQ_VBLANK);
+		
+		bus.dma.onVBlank();
+	} else if (currentScanline == 228) { // Start of frame
+		currentScanline = 0;
+		vBlankFlag = false;
 	}
 
-	if (ppu->vCountSetting == ppu->currentScanline) {
-		ppu->vCounterFlag = true;
+	if (vCountSetting == currentScanline) {
+		vCounterFlag = true;
 
-		if (ppu->vCounterIrqEnable)
-			ppu->bus.cpu.requestInterrupt(GBACPU::IRQ_VCOUNT);
+		if (vCounterIrqEnable)
+			bus.cpu.requestInterrupt(GBACPU::IRQ_VCOUNT);
 	} else {
-		ppu->vCounterFlag = false;
+		vCounterFlag = false;
 	}
 
-	systemEvents.addEvent(1232, lineStartEvent, object);
+	systemEvents.addEvent(1232, lineStartEvent, this);
 }
 
 void GBAPPU::hBlankEvent(void *object) {
-	GBAPPU *ppu = static_cast<GBAPPU *>(object);
+	static_cast<GBAPPU *>(object)->hBlank();
+}
 
-	if (ppu->currentScanline < 160)
-		ppu->drawScanline();
+void GBAPPU::hBlank() {
+	if (currentScanline < 160)
+		drawScanline();
 
-	ppu->hBlankFlag = true;
-	if (ppu->hBlankIrqEnable)
-		ppu->bus.cpu.requestInterrupt(GBACPU::IRQ_HBLANK);
+	hBlankFlag = true;
+	if (hBlankIrqEnable)
+		bus.cpu.requestInterrupt(GBACPU::IRQ_HBLANK);
 
-	systemEvents.addEvent(1232, hBlankEvent, object);
+	if (!vBlankFlag)
+		bus.dma.onHBlank();
+
+	systemEvents.addEvent(1232, hBlankEvent, this);
 }
 
 static const int objSizeArray[3][4][2] = {
@@ -75,6 +83,8 @@ static const int objSizeArray[3][4][2] = {
 
 void GBAPPU::drawObjects() {
 	int tileRowAddress = 0;
+	bool win0VertFits = (win0Top > win0Bottom) ? ((currentScanline >= win0Top) || (currentScanline < win0Bottom)) : ((currentScanline >= win0Top) && (currentScanline < win0Bottom));
+	bool win1VertFits = (win1Top > win1Bottom) ? ((currentScanline >= win1Top) || (currentScanline < win1Bottom)) : ((currentScanline >= win1Top) && (currentScanline < win1Bottom));
 
 	for (int priority = 3; priority >= 0; priority--) {
 		for (int i = 0; i < 240; i++)
@@ -102,7 +112,7 @@ void GBAPPU::drawObjects() {
 				for (int relX = 0; relX < xSize; relX++) {
 					if (x < 240) {
 						if (((relX % 8) == 0) || (x == 0)) // Fetch new tile
-							tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - y) : y) / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((obj->horizontolFlip ? (xSize - 1 - relX) : relX) / 8)) * (32 + (32 * obj->bpp))) + (yMod * (4 + (obj->bpp * 4)));
+							tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - y) : y) / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((obj->horizontolFlip ? (xSize - 1 - relX) : relX) / 8)) * (32 << obj->bpp)) + (yMod * (4 << obj->bpp));
 						if (((tileRowAddress <= 0x14000) && (bgMode >= 3)) || (tileRowAddress >= 0x18000))
 							break;
 
@@ -126,13 +136,13 @@ void GBAPPU::drawObjects() {
 						pix->inWinOut = false;
 
 						if (window0DisplayFlag)
-							if ((x >= win0Left) && (x < win0Right) && (currentScanline >= win0Top) && (currentScanline < win0Bottom))
+							if ((x >= win0Left) && (x < win0Right) && win0VertFits)
 								pix->inWin0 = true;
 						if (window1DisplayFlag)
-							if ((x >= win1Left) && (x < win1Right) && (currentScanline >= win1Top) && (currentScanline < win1Bottom))
+							if ((x >= win1Left) && (x < win1Right) && win1VertFits)
 								pix->inWin1 = true;
 						pix->inWinOut = !(pix->inWin0 || pix->inWin1);
-						
+
 						if (tileData != 0) {
 							pix->priority = priority;
 							pix->color = convertColor(paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData]);
@@ -235,6 +245,9 @@ void GBAPPU::drawBg() {
 
 	int x = xOffset;
 	int y = currentScanline + yOffset;
+
+	bool win0VertFits = (win0Top > win0Bottom) ? ((currentScanline >= win0Top) || (currentScanline < win0Bottom)) : ((currentScanline >= win0Top) && (currentScanline < win0Bottom));
+	bool win1VertFits = (win1Top > win1Bottom) ? ((currentScanline >= win1Top) || (currentScanline < win1Bottom)) : ((currentScanline >= win1Top) && (currentScanline < win1Bottom));
 	for (int i = 0; i < 240; i++) {
 		if (((x % 8) == 0) || (i == 0)) { // Fetch new tile
 			int tilemapIndex = (this->*tilemapIndexLUT[(bgNum * 4) + screenSize])(x, y);
@@ -246,7 +259,7 @@ void GBAPPU::drawBg() {
 			tileIndex = tilemapEntry & 0x3FF;
 
 			int yMod = verticalFlip ? (7 - (y % 8)) : (y % 8);
-			tileRowAddress = (characterBaseBlock * 0x4000) + (tileIndex * (32 + (32 * bpp))) + (yMod * (4 + (bpp * 4)));
+			tileRowAddress = (characterBaseBlock * 0x4000) + (tileIndex * (32 << bpp)) + (yMod * (4 << bpp));
 		}
 		if (tileRowAddress >= 0x10000)
 			break;
@@ -271,10 +284,10 @@ void GBAPPU::drawBg() {
 		pix->inWinOut = false;
 
 		if (window0DisplayFlag)
-			if ((i >= win0Left) && (i < win0Right) && (currentScanline >= win0Top) && (currentScanline < win0Bottom))
+			if ((i >= win0Left) && (i < win0Right) && win0VertFits)
 				pix->inWin0 = true;
 		if (window1DisplayFlag)
-			if ((i >= win1Left) && (i < win1Right) && (currentScanline >= win1Top) && (currentScanline < win1Bottom))
+			if ((i >= win1Left) && (i < win1Right) && win1VertFits)
 				pix->inWin1 = true;
 		pix->inWinOut = !(pix->inWin0 || pix->inWin1);
 
@@ -288,10 +301,10 @@ void GBAPPU::drawBg() {
 void GBAPPU::drawScanline() {
 	switch (bgMode) {
 	case 0:
-		if (screenDisplayBg3) drawBg<3>();
-		if (screenDisplayBg2) drawBg<2>();
-		if (screenDisplayBg1) drawBg<1>();
 		if (screenDisplayBg0) drawBg<0>();
+		if (screenDisplayBg1) drawBg<1>();
+		if (screenDisplayBg2) drawBg<2>();
+		if (screenDisplayBg3) drawBg<3>();
 		if (screenDisplayObj) drawObjects();
 
 		for (int i = 0; i < 240; i++) {
@@ -342,7 +355,6 @@ void GBAPPU::drawScanline() {
 	case 1:
 		if (screenDisplayBg0) drawBg<0>();
 		if (screenDisplayBg1) drawBg<1>();
-		
 		if (screenDisplayObj) drawObjects();
 
 		for (int i = 0; i < 240; i++) {

@@ -54,6 +54,7 @@ public:
 	void addThreadEvent(threadEventType type, u64 intArg);
 	void addThreadEvent(threadEventType type, u64 intArg, void *ptrArg);
 
+	bool pauseCpu;
 	std::atomic<bool> running;
 	std::atomic<bool> traceInstructions;
 	std::string previousLogLine;

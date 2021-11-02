@@ -36,7 +36,10 @@ add_executable(ecnavda-yobemag
 	src/gba.cpp
 	src/arm7tdmi.cpp
 	src/cpu.cpp
+	src/apu.cpp
+	src/dma.cpp
 	src/ppu.cpp
+	src/timer.cpp
 )
 
 target_compile_options(ecnavda-yobemag PRIVATE

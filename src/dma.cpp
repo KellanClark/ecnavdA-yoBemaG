@@ -1,0 +1,445 @@
+
+#include "dma.hpp"
+#include "fmt/core.h"
+#include "scheduler.hpp"
+#include "types.hpp"
+#include "gba.hpp"
+
+GBADMA::GBADMA(GameBoyAdvance& bus_) : bus(bus_) {
+	logDma = false;
+
+	reset();
+}
+
+void GBADMA::reset() {
+	currentDma = -1;
+	dma0Queued = dma1Queued = dma2Queued = dma3Queued = false;
+
+	internalDMA0SAD = internalDMA0DAD = internalDMA0CNT.raw = 0;
+	internalDMA1SAD = internalDMA1DAD = internalDMA1CNT.raw = 0;
+	internalDMA2SAD = internalDMA2DAD = internalDMA2CNT.raw = 0;
+	internalDMA3SAD = internalDMA3DAD = internalDMA3CNT.raw = 0;
+
+	DMA0SAD = DMA0DAD = DMA0CNT.raw = 0;
+	DMA1SAD = DMA1DAD = DMA1CNT.raw = 0;
+	DMA2SAD = DMA2DAD = DMA2CNT.raw = 0;
+	DMA3SAD = DMA3DAD = DMA3CNT.raw = 0;
+}
+
+void GBADMA::dmaEndEvent(void *object) {
+	static_cast<GBADMA *>(object)->dmaEnd();
+}
+
+void GBADMA::dmaEnd() {
+	bus.cpu.pauseCpu = false;
+
+	switch (currentDma) {
+	case 0:
+		if (internalDMA0CNT.dstControl == 3)
+			internalDMA0DAD = DMA0DAD;
+		
+		if (internalDMA0CNT.requestInterrupt)
+			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA0);
+
+		if (!internalDMA0CNT.repeat)
+			DMA0CNT.enable = false;
+		internalDMA0CNT = DMA0CNT;
+		break;
+	case 1:
+		if (internalDMA1CNT.dstControl == 3)
+			internalDMA1DAD = DMA1DAD;
+		
+		if (internalDMA1CNT.requestInterrupt)
+			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA1);
+
+		if (!internalDMA1CNT.repeat)
+			DMA1CNT.enable = false;
+		internalDMA1CNT = DMA1CNT;
+		break;
+	case 2:
+		if (internalDMA2CNT.dstControl == 3)
+			internalDMA2DAD = DMA2DAD;
+		
+		if (internalDMA2CNT.requestInterrupt)
+			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA2);
+
+		if (!internalDMA2CNT.repeat)
+			DMA2CNT.enable = false;
+		internalDMA2CNT = DMA2CNT;
+		break;
+	case 3:
+		if (internalDMA3CNT.dstControl == 3)
+			internalDMA3DAD = DMA3DAD;
+		
+		if (internalDMA3CNT.requestInterrupt)
+			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA3);
+
+		if (!internalDMA3CNT.repeat)
+			DMA3CNT.enable = false;
+		internalDMA3CNT = DMA3CNT;
+		break;
+	}
+
+	currentDma = -1;
+	checkDma();
+}
+
+void GBADMA::onHBlank() {
+	if ((currentDma != 0) && internalDMA0CNT.enable && (internalDMA0CNT.timing == 2))
+		dma0Queued = true;
+	if ((currentDma != 1) && internalDMA1CNT.enable && (internalDMA1CNT.timing == 2))
+		dma1Queued = true;
+	if ((currentDma != 2) && internalDMA2CNT.enable && (internalDMA2CNT.timing == 2))
+		dma2Queued = true;
+	if ((currentDma != 3) && internalDMA3CNT.enable && (internalDMA3CNT.timing == 2))
+		dma3Queued = true;
+	
+	checkDma();
+}
+
+void GBADMA::onVBlank() {
+	if ((currentDma != 0) && internalDMA0CNT.enable && (internalDMA0CNT.timing == 1))
+		dma0Queued = true;
+	if ((currentDma != 1) && internalDMA1CNT.enable && (internalDMA1CNT.timing == 1))
+		dma1Queued = true;
+	if ((currentDma != 2) && internalDMA2CNT.enable && (internalDMA2CNT.timing == 1))
+		dma2Queued = true;
+	if ((currentDma != 3) && internalDMA3CNT.enable && (internalDMA3CNT.timing == 1))
+		dma3Queued = true;
+	
+	checkDma();
+}
+
+void GBADMA::checkDma() {
+	if (currentDma == -1) {
+		if (internalDMA0CNT.enable && dma0Queued) {
+			doDma<0>();
+		} else if (internalDMA1CNT.enable && dma1Queued) {
+			doDma<1>();
+		} else if (internalDMA2CNT.enable && dma2Queued) {
+			doDma<2>();
+		} else if (internalDMA3CNT.enable && dma3Queued) {
+			doDma<3>();
+		}
+	}
+}
+
+template <int channel>
+void GBADMA::doDma() {
+	u32 *sourceAddress;
+	u32 *destinationAddress;
+	DmaControlBits *control;
+	switch (channel) {
+	case 0:
+		sourceAddress = &internalDMA0SAD;
+		destinationAddress = &internalDMA0DAD;
+		control = &internalDMA0CNT;
+		currentDma = 0;
+		dma0Queued = false;
+		break;
+	case 1:
+		sourceAddress = &internalDMA1SAD;
+		destinationAddress = &internalDMA1DAD;
+		control = &internalDMA1CNT;
+		currentDma = 1;
+		dma1Queued = false;
+		break;
+	case 2:
+		sourceAddress = &internalDMA2SAD;
+		destinationAddress = &internalDMA2DAD;
+		control = &internalDMA2CNT;
+		currentDma = 2;
+		dma2Queued = false;
+		break;
+	case 3:
+		sourceAddress = &internalDMA3SAD;
+		destinationAddress = &internalDMA3DAD;
+		control = &internalDMA3CNT;
+		currentDma = 3;
+		dma3Queued = false;
+		break;
+	}
+
+	if (logDma) {
+		bus.log << fmt::format("DMA Channel {} from 0x{:0>7X} to 0x{:0>7X} with control = 0x{:0>8X}\n", channel, *sourceAddress, *destinationAddress, control->raw);
+	}
+
+	if (control->transferSize) { // 32 bit
+		for (int i = 0; i < control->numTransfers; i++) {
+			u32 data = bus.read<u32>(*sourceAddress);
+			bus.write<u32>(*destinationAddress, data);
+
+			if ((control->dstControl == 0) || (control->dstControl == 3)) { // Increment
+				*destinationAddress += 4;
+			} else if (control->dstControl == 1) { // Decrement
+				*destinationAddress -= 4;
+			}
+
+			if (control->srcControl == 0) { // Increment
+				*sourceAddress += 4;
+			} else if (control->srcControl == 1) { // Decrement
+				*sourceAddress -= 4;
+			}
+		}
+	} else { // 16 bit
+		for (int i = 0; i < control->numTransfers; i++) {
+			u16 data = bus.read<u16>(*sourceAddress);
+			bus.write<u16>(*destinationAddress, data);
+
+			if ((control->dstControl == 0) || (control->dstControl == 3)) { // Increment
+				*destinationAddress += 2;
+			} else if (control->dstControl == 1) { // Decrement
+				*destinationAddress -= 2;
+			}
+
+			if (control->srcControl == 0) { // Increment
+				*sourceAddress += 2;
+			} else if (control->srcControl == 1) { // Decrement
+				*sourceAddress -= 2;
+			}
+		}
+	}
+	*destinationAddress &= 0x07FFFFFF;
+	*sourceAddress &= 0x0FFFFFFF;
+
+	bus.cpu.pauseCpu = true;
+	systemEvents.addEvent(1, dmaEndEvent, this);
+}
+
+u8 GBADMA::readIO(u32 address) {
+	switch (address) {
+	case 0x40000B8:
+		return (u8)DMA0CNT.raw;
+	case 0x40000B9:
+		return (u8)(DMA0CNT.raw >> 8);
+	case 0x40000BA:
+		return (u8)(DMA0CNT.raw >> 16);
+	case 0x40000BB:
+		return (u8)(DMA0CNT.raw >> 24);
+	case 0x40000C4:
+		return (u8)DMA1CNT.raw;
+	case 0x40000C5:
+		return (u8)(DMA1CNT.raw >> 8);
+	case 0x40000C6:
+		return (u8)(DMA1CNT.raw >> 16);
+	case 0x40000C7:
+		return (u8)(DMA1CNT.raw >> 24);
+	case 0x40000D0:
+		return (u8)DMA2CNT.raw;
+	case 0x40000D1:
+		return (u8)(DMA2CNT.raw >> 8);
+	case 0x40000D2:
+		return (u8)(DMA2CNT.raw >> 16);
+	case 0x40000D3:
+		return (u8)(DMA2CNT.raw >> 24);
+	case 0x40000DC:
+		return (u8)DMA3CNT.raw;
+	case 0x40000DD:
+		return (u8)(DMA3CNT.raw >> 8);
+	case 0x40000DE:
+		return (u8)(DMA3CNT.raw >> 16);
+	case 0x40000DF:
+		return (u8)(DMA3CNT.raw >> 24);
+	default:
+		return 0;
+	}
+}
+
+void GBADMA::writeIO(u32 address, u8 value) {
+	bool oldEnable;
+
+	switch (address) {
+	case 0x40000B0:
+		DMA0SAD = (DMA0SAD & 0xFFFFFF00) | value;
+		break;
+	case 0x40000B1:
+		DMA0SAD = (DMA0SAD & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000B2:
+		DMA0SAD = (DMA0SAD & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000B3:
+		DMA0SAD = (DMA0SAD & 0x00FFFFFF) | ((value & 0x0F) << 24);
+		break;
+	case 0x40000B4:
+		DMA0DAD = (DMA0DAD & 0xFFFFFF00) | value;
+		break;
+	case 0x40000B5:
+		DMA0DAD = (DMA0DAD & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000B6:
+		DMA0DAD = (DMA0DAD & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000B7:
+		DMA0DAD = (DMA0DAD & 0x00FFFFFF) | ((value & 0x07) << 24);
+		break;
+	case 0x40000B8:
+		DMA0CNT.raw = (DMA0CNT.raw & 0xFFFFFF00) | value;
+		break;
+	case 0x40000B9:
+		DMA0CNT.raw = (DMA0CNT.raw & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000BA:
+		DMA0CNT.raw = (DMA0CNT.raw & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000BB:
+		oldEnable = DMA0CNT.enable;
+		DMA0CNT.raw = (DMA0CNT.raw & 0x00FFFFFF) | (value << 24);
+
+		if ((value & 0x80) && !oldEnable) {
+			internalDMA0SAD = DMA0SAD;
+			internalDMA0DAD = DMA0DAD;
+			internalDMA0CNT = DMA0CNT;
+
+			if (internalDMA0CNT.timing == 0) {
+				dma0Queued = true;
+				checkDma();
+			}
+		}
+		break;
+	case 0x40000BC:
+		DMA1SAD = (DMA1SAD & 0xFFFFFF00) | value;
+		break;
+	case 0x40000BD:
+		DMA1SAD = (DMA1SAD & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000BE:
+		DMA1SAD = (DMA1SAD & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000BF:
+		DMA1SAD = (DMA1SAD & 0x00FFFFFF) | ((value & 0x0F) << 24);
+		break;
+	case 0x40000C0:
+		DMA1DAD = (DMA1DAD & 0xFFFFFF00) | value;
+		break;
+	case 0x40000C1:
+		DMA1DAD = (DMA1DAD & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000C2:
+		DMA1DAD = (DMA1DAD & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000C3:
+		DMA1DAD = (DMA1DAD & 0x00FFFFFF) | ((value & 0x07) << 24);
+		break;
+	case 0x40000C4:
+		DMA1CNT.raw = (DMA1CNT.raw & 0xFFFFFF00) | value;
+		break;
+	case 0x40000C5:
+		DMA1CNT.raw = (DMA1CNT.raw & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000C6:
+		DMA1CNT.raw = (DMA1CNT.raw & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000C7:
+		oldEnable = DMA1CNT.enable;
+		DMA1CNT.raw = (DMA1CNT.raw & 0x00FFFFFF) | (value << 24);
+
+		if ((value & 0x80) && !oldEnable) {
+			internalDMA1SAD = DMA1SAD;
+			internalDMA1DAD = DMA1DAD;
+			internalDMA1CNT = DMA1CNT;
+
+			if (internalDMA1CNT.timing == 0) {
+				dma1Queued = true;
+				checkDma();
+			}
+		}
+		break;
+	case 0x40000C8:
+		DMA2SAD = (DMA2SAD & 0xFFFFFF00) | value;
+		break;
+	case 0x40000C9:
+		DMA2SAD = (DMA2SAD & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000CA:
+		DMA2SAD = (DMA2SAD & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000CB:
+		DMA2SAD = (DMA2SAD & 0x00FFFFFF) | ((value & 0x0F) << 24);
+		break;
+	case 0x40000CC:
+		DMA2DAD = (DMA2DAD & 0xFFFFFF00) | value;
+		break;
+	case 0x40000CD:
+		DMA2DAD = (DMA2DAD & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000CE:
+		DMA2DAD = (DMA2DAD & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000CF:
+		DMA2DAD = (DMA2DAD & 0x00FFFFFF) | ((value & 0x07) << 24);
+		break;
+	case 0x40000D0:
+		DMA2CNT.raw = (DMA2CNT.raw & 0xFFFFFF00) | value;
+		break;
+	case 0x40000D1:
+		DMA2CNT.raw = (DMA2CNT.raw & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000D2:
+		DMA2CNT.raw = (DMA2CNT.raw & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000D3:
+		oldEnable = DMA2CNT.enable;
+		DMA2CNT.raw = (DMA2CNT.raw & 0x00FFFFFF) | (value << 24);
+
+		if ((value & 0x80) && !oldEnable) {
+			internalDMA2SAD = DMA2SAD;
+			internalDMA2DAD = DMA2DAD;
+			internalDMA2CNT = DMA2CNT;
+
+			if (internalDMA2CNT.timing == 0) {
+				dma2Queued = true;
+				checkDma();
+			}
+		}
+		break;
+	case 0x40000D4:
+		DMA3SAD = (DMA3SAD & 0xFFFFFF00) | value;
+		break;
+	case 0x40000D5:
+		DMA3SAD = (DMA3SAD & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000D6:
+		DMA3SAD = (DMA3SAD & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000D7:
+		DMA3SAD = (DMA3SAD & 0x00FFFFFF) | ((value & 0x0F) << 24);
+		break;
+	case 0x40000D8:
+		DMA3DAD = (DMA3DAD & 0xFFFFFF00) | value;
+		break;
+	case 0x40000D9:
+		DMA3DAD = (DMA3DAD & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000DA:
+		DMA3DAD = (DMA3DAD & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000DB:
+		DMA3DAD = (DMA3DAD & 0x00FFFFFF) | ((value & 0x07) << 24);
+		break;
+	case 0x40000DC:
+		DMA3CNT.raw = (DMA3CNT.raw & 0xFFFFFF00) | value;
+		break;
+	case 0x40000DD:
+		DMA3CNT.raw = (DMA3CNT.raw & 0xFFFF00FF) | (value << 8);
+		break;
+	case 0x40000DE:
+		DMA3CNT.raw = (DMA3CNT.raw & 0xFF00FFFF) | (value << 16);
+		break;
+	case 0x40000DF:
+		oldEnable = DMA3CNT.enable;
+		DMA3CNT.raw = (DMA3CNT.raw & 0x00FFFFFF) | (value << 24);
+
+		if ((value & 0x80) && !oldEnable) {
+			internalDMA3SAD = DMA3SAD;
+			internalDMA3DAD = DMA3DAD;
+			internalDMA3CNT = DMA3CNT;
+
+			if (internalDMA3CNT.timing == 0) {
+				dma3Queued = true;
+				checkDma();
+			}
+		}
+		break;
+	}
+}

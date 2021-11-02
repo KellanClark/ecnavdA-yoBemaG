@@ -1,12 +1,10 @@
 
 #include "gba.hpp"
-#include "arm7tdmi.hpp"
 #include "scheduler.hpp"
-#include <cstdio>
 
 #define toPage(x) (x >> 15)
 
-GameBoyAdvance::GameBoyAdvance() : cpu(*this), ppu(*this) {
+GameBoyAdvance::GameBoyAdvance() : cpu(*this), apu(*this), dma(*this), ppu(*this), timer(*this) {
 	// Fill page tables
 	for (int i = toPage(0x2000000); i < toPage(0x3000000); i += (256 / 32)) {
 		for (int j = i; j < (i + (256 / 32)); j++) {
@@ -35,12 +33,15 @@ void GameBoyAdvance::reset() {
 
 	memset(ewram, 0, sizeof(ewram));
 	memset(iwram, 0, sizeof(iwram));
-	KEYINPUT = 0x1FF;
+	KEYINPUT = 0x3FF;
 	KEYCNT = 0;
 
 	systemEvents.reset();
 	cpu.reset();
+	apu.reset();
+	dma.reset();
 	ppu.reset();
+	timer.reset();
 }
 
 int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_) {
@@ -70,7 +71,7 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	romBuff.resize(romSize);
 	romFileStream.read(reinterpret_cast<char *>(romBuff.data()), romSize);
 	romFileStream.close();
-	
+
 	romBuff.resize(0x2000000);
 	{ // Round rom size to power of 2 https://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
 		u32 v = romSize - 1;
@@ -93,14 +94,27 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 		pageTableRead[pageIndex | 0x1000] = ptr; // 0x0800'0000 - 0x09FF'FFFF
 	}
 
+	// Open save file
+	saveFilePath = romFilePath_;
+	saveFilePath.replace_extension(".sav");
+
+	std::ifstream saveFileStream{saveFilePath, std::ios::binary};
+	saveFileStream.seekg(0, std::ios::beg);
+	sram.resize(0x10000);
+	saveFileStream.read(reinterpret_cast<char*>(sram.data()), 0x10000);
+	saveFileStream.close();
+
 	cpu.running = true;
 	return 0;
 }
 
 void GameBoyAdvance::save() {
-	/*std::ofstream saveFileStream{"vram.bin", std::ios::binary | std::ios::trunc};
-	saveFileStream.write(reinterpret_cast<const char*>(ppu.paletteRam), sizeof(ppu.paletteRam));
-	saveFileStream.close();*/
+	std::ofstream saveFileStream{saveFilePath, std::ios::binary | std::ios::trunc};
+	if (!saveFileStream) {
+		return;
+	}
+	saveFileStream.write(reinterpret_cast<const char*>(sram.data()), sram.size());
+	saveFileStream.close();
 }
 
 template <typename T>
@@ -136,8 +150,11 @@ T GameBoyAdvance::read(u32 address) {
 			}
 
 			switch (offset) {
-			case 0x000 ... 0x056: // PPU
+			case 0x000 ... 0x055: // PPU
 				return ppu.readIO(address);
+
+			case 0x0B0 ... 0x0DF: // DMA
+				return dma.readIO(address);
 
 			case 0x130: // Joypad
 				return (u8)KEYINPUT;
@@ -165,6 +182,14 @@ T GameBoyAdvance::read(u32 address) {
 			return val;
 		case toPage(0x7000000) ... toPage(0x8000000) - 1:
 			std::memcpy(&val, &ppu.oam[0] + (offset & 0x3FF), sizeof(T));
+			return val;
+		case toPage(0xE000000) ... toPage(0x10000000) - 1:
+			std::memcpy(&val, &sram[0] + (offset & 0x3FF), sizeof(T));
+
+			if (sizeof(T) >= 2)
+				val |= val << 8;
+			if (sizeof(T) == 4)
+				val |= val << 16;
 			return val;
 		}
 	}
@@ -199,14 +224,18 @@ void GameBoyAdvance::write(u32 address, T value) {
 			}
 
 			switch (offset) {
-			case 0x000 ... 0x056: // PPU
+			case 0x000 ... 0x055: // PPU
 				ppu.writeIO(address, value);
 				break;
 
-			case 0x131: // Joypad
+			case 0x0B0 ... 0x0DF: // DMA
+				dma.writeIO(address, value);
+				break;
+
+			case 0x132: // Joypad
 				KEYCNT = (KEYCNT & 0xFF00) | value;
 				break;
-			case 0x132:
+			case 0x133:
 				KEYCNT = (KEYCNT & 0x00FF) | (value << 8);
 				break;
 
@@ -253,6 +282,9 @@ void GameBoyAdvance::write(u32 address, T value) {
 			} else {
 				std::memcpy(&ppu.oam[0] + (offset & 0x3FF), &value, sizeof(T));
 			}
+			break;
+		case toPage(0xE000000) ... toPage(0x10000000) - 1:
+			std::memcpy(&sram[0] + (address & 0xFFFF), &value, sizeof(T));
 			break;
 		}
 	}

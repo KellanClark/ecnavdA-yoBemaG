@@ -19,7 +19,9 @@ public:
 	void reset();
 
 	static void lineStartEvent(void *object);
+	void lineStart();
 	static void hBlankEvent(void *object);
+	void hBlank();
 
 	void drawObjects();
 	template <int mode, int size> int calculateTilemapIndex(int x, int y);

@@ -191,7 +191,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		// Joypad inputs
-		const u8* currentKeyStates = SDL_GetKeyboardState(NULL);
+		const u8 *currentKeyStates = SDL_GetKeyboardState(NULL);
 		u16 currentJoypad = 0;
 		for (int i = 0; i < 10; i++) {
 			if (currentKeyStates[keymap[i]])
@@ -273,9 +273,7 @@ int main(int argc, char *argv[]) {
 }
 
 int loadRom() {
-	//GBA.reset();
 	GBA.cpu.addThreadEvent(GBACPU::RESET);
-	//while (!GBA.cpu.threadQueue.empty());
 
 	if (GBA.loadRom(argRomFilePath, argBiosFilePath))
 		return -1;
@@ -295,7 +293,7 @@ void mainMenuBar() {
 			biosFileDialog();
 		}
 
-		if (ImGui::MenuItem("Save", "Ctrl+S", false, false)) {
+		if (ImGui::MenuItem("Save", "Ctrl+S", false, argRomGiven)) {
 			GBA.save();
 		}
 
@@ -431,9 +429,11 @@ void systemLogWindow() {
 	ImGui::SetNextWindowSize(ImVec2(700, 600), ImGuiCond_FirstUseEver);
 	ImGui::Begin("System Log", &showSystemLog);
 
-	ImGui::Checkbox("Auto-scroll", &shouldAutoscroll);
-	ImGui::SameLine();
 	ImGui::Checkbox("Trace Instructions", (bool *)&GBA.cpu.traceInstructions);
+	ImGui::SameLine();
+	ImGui::Checkbox("Log DMAs", (bool *)&GBA.dma.logDma);
+
+	ImGui::Checkbox("Auto-scroll", &shouldAutoscroll);
 	ImGui::SameLine();
 	if (ImGui::Button("Save Log")) {
 		std::ofstream logFileStream{"log", std::ios::trunc};

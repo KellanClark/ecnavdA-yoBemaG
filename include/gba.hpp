@@ -24,14 +24,20 @@
 #include "types.hpp"
 #include "scheduler.hpp"
 #include "cpu.hpp"
+#include "apu.hpp"
+#include "dma.hpp"
 #include "ppu.hpp"
+#include "timer.hpp"
 
 class GBACPU;
 class GBAPPU;
 class GameBoyAdvance {
 public:
 	GBACPU cpu;
+	GBAAPU apu;
+	GBADMA dma;
 	GBAPPU ppu;
+	GBATIMER timer;
 
 	GameBoyAdvance();
 	~GameBoyAdvance();
@@ -51,6 +57,8 @@ public:
 	u16 KEYINPUT;
 	u16 KEYCNT;
 	std::vector<u8> romBuff;
+	std::filesystem::path saveFilePath;
+	std::vector<u8> sram;
 
 private:
 	u8 *pageTableRead[8192];
