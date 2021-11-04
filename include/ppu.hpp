@@ -64,6 +64,11 @@ public:
 				u16 verticalFlip : 1;
 				u16 size : 2;
 			};
+			struct {
+				u16 : 9;
+				u16 affineIndex : 5;
+				u16 : 2;
+			};
 			u16 attribute1;
 		};
 		union {
@@ -76,6 +81,16 @@ public:
 		};
 		u16 unused;
 	};
+	struct __attribute__ ((packed)) ObjectMatrix {
+		u16 u1, u2, u3;
+		u16 pa;
+		u16 u4, u5, u6;
+		u16 pb;
+		u16 u7, u8, u9;
+		u16 pc;
+		u16 u10, u11, u12;
+		u16 pd;
+	};
 
 	union {
 		u8 paletteRam[0x400];
@@ -85,6 +100,7 @@ public:
 	union {
 		u8 oam[0x400];
 		Object objects[128];
+		ObjectMatrix objectMatrices[32];
 	};
 
 	// MMIO

@@ -83,6 +83,8 @@ static const int objSizeArray[3][4][2] = {
 
 void GBAPPU::drawObjects() {
 	int tileRowAddress = 0;
+	int tileDataAddress = 0;
+	u8 tileData = 0;
 	bool win0VertFits = (win0Top > win0Bottom) ? ((currentScanline >= win0Top) || (currentScanline < win0Bottom)) : ((currentScanline >= win0Top) && (currentScanline < win0Bottom));
 	bool win1VertFits = (win1Top > win1Bottom) ? ((currentScanline >= win1Top) || (currentScanline < win1Bottom)) : ((currentScanline >= win1Top) && (currentScanline < win1Bottom));
 
@@ -93,6 +95,7 @@ void GBAPPU::drawObjects() {
 		for (int objNo = 127; objNo >= 0; objNo--) {
 			if ((objects[objNo].priority == priority) && (objects[objNo].objMode != 2)) {
 				Object *obj = &objects[objNo];
+				ObjectMatrix mat = objectMatrices[obj->affineIndex];
 
 				int xSize = objSizeArray[obj->shape][obj->size][0];
 				int ySize = objSizeArray[obj->shape][obj->size][1];
@@ -101,7 +104,19 @@ void GBAPPU::drawObjects() {
 				u8 y = currentScanline - obj->objY;
 				int yMod = obj->verticalFlip ? (7 - (y % 8)) : (y % 8);
 
-				if ((obj->objY + ySize) > 255) {
+				float affX = 0;
+				float affY = 0;
+				if (obj->objMode == 1) { // Affine
+					affX = (((float)((i16)mat.pb) / 255) * (y - ((float)(ySize - 1) / 2))) + (((float)((i16)mat.pa) / 255) * ((float)(xSize - 1) / -2)) + ((float)(xSize - 1) / 2);
+					affY = (((float)((i16)mat.pd) / 255) * (y - ((float)(ySize - 1) / 2))) + (((float)((i16)mat.pc) / 255) * ((float)(xSize - 1) / -2)) + ((float)(ySize - 1) / 2);
+				} else if (obj->objMode == 3) { // Affine double size
+					affX = (((float)((i16)mat.pb) / 255) * (y - (float)(ySize - 1))) + (((float)((i16)mat.pa) / 255) * ((float)(xSize - 1) * -1)) + ((float)(xSize - 1) / 2);
+					affY = (((float)((i16)mat.pd) / 255) * (y - (float)(ySize - 1))) + (((float)((i16)mat.pc) / 255) * ((float)(xSize - 1) * -1)) + ((float)(ySize - 1) / 2);
+
+					ySize <<= 1;
+				}
+
+				if ((obj->objY + ySize) > 255) { // Decide if object is on this scanline
 					if ((currentScanline < obj->objY) && (currentScanline >= (u8)(obj->objY + ySize)))
 						continue;
 				} else {
@@ -109,24 +124,45 @@ void GBAPPU::drawObjects() {
 						continue;
 				}
 
-				for (int relX = 0; relX < xSize; relX++) {
+				if (obj->objMode == 3)
+					ySize >>= 1;
+
+				for (int relX = 0; relX < (xSize << (obj->objMode == 3)); relX++) {
 					if (x < 240) {
-						if (((relX % 8) == 0) || (x == 0)) // Fetch new tile
-							tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - y) : y) / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((obj->horizontolFlip ? (xSize - 1 - relX) : relX) / 8)) * (32 << obj->bpp)) + (yMod * (4 << obj->bpp));
-						if (((tileRowAddress <= 0x14000) && (bgMode >= 3)) || (tileRowAddress >= 0x18000))
-							break;
+						if ((obj->objMode == 1) || (obj->objMode == 3)) {
+							if ((affX >= 0) && (affX < xSize) && (affY >= 0) && (affY < ySize)) {
+								tileDataAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((int)affY / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((int)affX / 8)) * (32 << obj->bpp)) + (((int)affY % 8) * (4 << obj->bpp)) + (((int)affX % 8) / (2 >> obj->bpp));
 
-						u8 tileData;
-						int xMod = obj->horizontolFlip ? (7 - (relX % 8)) : (relX % 8);
-						if (obj->bpp) { // 8 bits per pixel
-							tileData = vram[tileRowAddress + xMod];
-						} else { // 4 bits per pixel
-							tileData = vram[tileRowAddress + (xMod / 2)];
-
-							if (xMod & 1) {
-								tileData >>= 4;
+								tileData = vram[tileDataAddress];
+								if ((int)affX & 1) {
+									tileData >>= 4;
+								} else {
+									tileData &= 0xF;
+								}
 							} else {
-								tileData &= 0xF;
+								tileData = 0;
+							}
+
+							affX += (float)((i16)mat.pa) / 255;
+							affY += (float)((i16)mat.pc) / 255;
+						} else {
+							if (((relX % 8) == 0) || (x == 0)) { // Fetch new tile
+								tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - y) : y) / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((obj->horizontolFlip ? (xSize - 1 - relX) : relX) / 8)) * (32 << obj->bpp)) + (yMod * (4 << obj->bpp));
+							}
+							if (((tileRowAddress <= 0x14000) && (bgMode >= 3)) || (tileRowAddress >= 0x18000))
+								break;
+
+							int xMod = obj->horizontolFlip ? (7 - (relX % 8)) : (relX % 8);
+							if (obj->bpp) { // 8 bits per pixel
+								tileData = vram[tileRowAddress + xMod];
+							} else { // 4 bits per pixel
+								tileData = vram[tileRowAddress + (xMod / 2)];
+
+								if (xMod & 1) {
+									tileData >>= 4;
+								} else {
+									tileData &= 0xF;
+								}
 							}
 						}
 
@@ -299,6 +335,9 @@ void GBAPPU::drawBg() {
 }
 
 void GBAPPU::drawScanline() {
+	for (int i = 0; i < 240; i++)
+		mergedBuffer[i].color = convertColor(paletteColors[0]);
+
 	switch (bgMode) {
 	case 0:
 		if (screenDisplayBg0) drawBg<0>();
@@ -308,8 +347,6 @@ void GBAPPU::drawScanline() {
 		if (screenDisplayObj) drawObjects();
 
 		for (int i = 0; i < 240; i++) {
-			mergedBuffer[i].color = convertColor(paletteColors[0]);
-
 			// Window
 			if (window0DisplayFlag || window1DisplayFlag) {
 				for (int layer = 3; layer >= 0; layer--) {
@@ -358,8 +395,6 @@ void GBAPPU::drawScanline() {
 		if (screenDisplayObj) drawObjects();
 
 		for (int i = 0; i < 240; i++) {
-			mergedBuffer[i].color = convertColor(paletteColors[0]);
-
 			// Window
 			if (window0DisplayFlag || window1DisplayFlag) {
 				for (int layer = 3; layer >= 0; layer--) {
@@ -427,8 +462,6 @@ void GBAPPU::drawScanline() {
 				auto vramIndex = (((currentScanline * 160) + x) * 2) + (displayFrameSelect * 0xA000);
 				u16 vramData = (vram[vramIndex + 1] << 8) | vram[vramIndex];
 				framebuffer[currentScanline][x] = convertColor(vramData);
-			} else {
-				framebuffer[currentScanline][x] = convertColor(paletteColors[0]);
 			}
 
 			for (int layer = 3; layer >= 0; layer--) {
@@ -436,10 +469,6 @@ void GBAPPU::drawScanline() {
 					framebuffer[currentScanline][x] = lineBuffer[4 + layer][x].color;
 			}
 		}
-		break;
-	default:
-		for (int i = 0; i < 240; i++)
-			framebuffer[currentScanline][i] = 0x8000; // Draw black
 		break;
 	}
 }
