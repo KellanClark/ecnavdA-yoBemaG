@@ -109,8 +109,10 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 }
 
 void GameBoyAdvance::save() {
+	log << "Saving to " << saveFilePath << std::endl;
 	std::ofstream saveFileStream{saveFilePath, std::ios::binary | std::ios::trunc};
 	if (!saveFileStream) {
+		log << "Failed to open/create save file\n";
 		return;
 	}
 	saveFileStream.write(reinterpret_cast<const char*>(sram.data()), sram.size());

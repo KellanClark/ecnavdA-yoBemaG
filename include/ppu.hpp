@@ -26,6 +26,7 @@ public:
 	void drawObjects();
 	template <int mode, int size> int calculateTilemapIndex(int x, int y);
 	template <int bgNum> void drawBg();
+	template <int bgNum> void drawBgAff();
 	void drawScanline();
 
 	u8 readIO(u32 address);
@@ -43,6 +44,14 @@ public:
 	};
 	Pixel lineBuffer[8][240];
 	Pixel mergedBuffer[240];
+
+	// Internal registers
+	bool win0VertFits;
+	bool win1VertFits;
+	float internalBG2X;
+	float internalBG2Y;
+	float internalBG3X;
+	float internalBG3Y;
 
 	struct __attribute__ ((packed)) Object {
 		union {
@@ -195,14 +204,26 @@ public:
 		};
 		u16 BG3CNT; // 0x400000E
 	};
-	u16 bg0XOffset; // 0x4000010
-	u16 bg0YOffset; // 0x4000012
-	u16 bg1XOffset; // 0x4000014
-	u16 bg1YOffset; // 0x4000016
-	u16 bg2XOffset; // 0x4000018
-	u16 bg2YOffset; // 0x400001A
-	u16 bg3XOffset; // 0x400001C
-	u16 bg3YOffset; // 0x400001E
+	u16 BG0HOFS; // 0x4000010
+	u16 BG0VOFS; // 0x4000012
+	u16 BG1HOFS; // 0x4000014
+	u16 BG1VOFS; // 0x4000016
+	u16 BG2HOFS; // 0x4000018
+	u16 BG2VOFS; // 0x400001A
+	u16 BG3HOFS; // 0x400001C
+	u16 BG3VOFS; // 0x400001E
+	u16 BG2PA; // 0x4000020
+	u16 BG2PB; // 0x4000022
+	u16 BG2PC; // 0x4000024
+	u16 BG2PD; // 0x4000026
+	u32 BG2X; // 0x4000028
+	u32 BG2Y; // 0x400002C
+	u16 BG3PA; // 0x4000030
+	u16 BG3PB; // 0x4000032
+	u16 BG3PC; // 0x4000034
+	u16 BG3PD; // 0x4000036
+	u32 BG3X; // 0x4000038
+	u32 BG3Y; // 0x400003C
 	union {
 		struct {
 			u16 win0Right : 8;

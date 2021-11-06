@@ -2,8 +2,10 @@
 #include "ppu.hpp"
 #include "gba.hpp"
 #include "scheduler.hpp"
+#include "types.hpp"
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 
 #define convertColor(x) (x | 0x8000)
 
@@ -19,7 +21,19 @@ void GBAPPU::reset() {
 	memset(vram, 0, sizeof(vram));
 	memset(oam, 0, sizeof(oam));
 
-	currentScanline = 0;
+	win0VertFits = win1VertFits = false;
+	internalBG2X = internalBG2Y = internalBG3X = internalBG3Y = 0;
+
+	DISPCNT = 0;
+	DISPSTAT = 0;
+	VCOUNT = 0;
+	BG0CNT = BG1CNT = BG2CNT = BG3CNT = 0;
+	BG0HOFS = BG0VOFS = 0;
+	BG1HOFS = BG1VOFS = 0;
+	BG2HOFS = BG2VOFS = 0;
+	BG3HOFS = BG3VOFS = 0;
+	BG2PA = BG2PB = BG2PC = BG2PD = BG2X = BG2Y = 0;
+	BG3PA = BG3PB = BG3PC = BG3PD = BG3X = BG3Y = 0;
 
 	systemEvents.addEvent(1232, lineStartEvent, this);
 	systemEvents.addEvent(960, hBlankEvent, this);
@@ -43,6 +57,11 @@ void GBAPPU::lineStart() {
 	} else if (currentScanline == 228) { // Start of frame
 		currentScanline = 0;
 		vBlankFlag = false;
+
+		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 255;
+		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 255;
+		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 255;
+		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 255;
 	}
 
 	if (vCountSetting == currentScanline) {
@@ -53,6 +72,15 @@ void GBAPPU::lineStart() {
 	} else {
 		vCounterFlag = false;
 	}
+
+	if (currentScanline == win0Top)
+		win0VertFits = true;
+	if (currentScanline == win0Bottom)
+		win0VertFits = false;
+	if (currentScanline == win1Top)
+		win1VertFits = true;
+	if (currentScanline == win1Bottom)
+		win1VertFits = false;
 
 	systemEvents.addEvent(1232, lineStartEvent, this);
 }
@@ -85,8 +113,6 @@ void GBAPPU::drawObjects() {
 	int tileRowAddress = 0;
 	int tileDataAddress = 0;
 	u8 tileData = 0;
-	bool win0VertFits = (win0Top > win0Bottom) ? ((currentScanline >= win0Top) || (currentScanline < win0Bottom)) : ((currentScanline >= win0Top) && (currentScanline < win0Bottom));
-	bool win1VertFits = (win1Top > win1Bottom) ? ((currentScanline >= win1Top) || (currentScanline < win1Bottom)) : ((currentScanline >= win1Top) && (currentScanline < win1Bottom));
 
 	for (int priority = 3; priority >= 0; priority--) {
 		for (int i = 0; i < 240; i++)
@@ -244,29 +270,29 @@ void GBAPPU::drawBg() {
 	int characterBaseBlock;
 	switch (bgNum) {
 	case 0:
-		xOffset = bg0XOffset;
-		yOffset = bg0YOffset;
+		xOffset = BG0HOFS;
+		yOffset = BG0VOFS;
 		screenSize = bg0ScreenSize;
 		bpp = bg0Bpp;
 		characterBaseBlock = bg0CharacterBaseBlock;
 		break;
 	case 1:
-		xOffset = bg1XOffset;
-		yOffset = bg1YOffset;
+		xOffset = BG1HOFS;
+		yOffset = BG1VOFS;
 		screenSize = bg1ScreenSize;
 		bpp = bg1Bpp;
 		characterBaseBlock = bg1CharacterBaseBlock;
 		break;
 	case 2:
-		xOffset = bg2XOffset;
-		yOffset = bg2YOffset;
+		xOffset = BG2HOFS;
+		yOffset = BG2VOFS;
 		screenSize = bg2ScreenSize;
 		bpp = bg2Bpp;
 		characterBaseBlock = bg2CharacterBaseBlock;
 		break;
 	case 3:
-		xOffset = bg3XOffset;
-		yOffset = bg3YOffset;
+		xOffset = BG3HOFS;
+		yOffset = BG3VOFS;
 		screenSize = bg3ScreenSize;
 		bpp = bg3Bpp;
 		characterBaseBlock = bg3CharacterBaseBlock;
@@ -282,8 +308,6 @@ void GBAPPU::drawBg() {
 	int x = xOffset;
 	int y = currentScanline + yOffset;
 
-	bool win0VertFits = (win0Top > win0Bottom) ? ((currentScanline >= win0Top) || (currentScanline < win0Bottom)) : ((currentScanline >= win0Top) && (currentScanline < win0Bottom));
-	bool win1VertFits = (win1Top > win1Bottom) ? ((currentScanline >= win1Top) || (currentScanline < win1Bottom)) : ((currentScanline >= win1Top) && (currentScanline < win1Bottom));
 	for (int i = 0; i < 240; i++) {
 		if (((x % 8) == 0) || (i == 0)) { // Fetch new tile
 			int tilemapIndex = (this->*tilemapIndexLUT[(bgNum * 4) + screenSize])(x, y);
@@ -331,6 +355,69 @@ void GBAPPU::drawBg() {
 		pix->color = convertColor(paletteColors[(paletteBank * !bpp) | tileData]);
 
 		++x;
+	}
+}
+
+template <int bgNum>
+void GBAPPU::drawBgAff() {
+	int characterBaseBlock;
+	int screenBaseBlock;
+	bool wrapping;
+	int screenSize;
+	float affX;
+	float affY;
+	float pa;
+	float pc;
+	if (bgNum == 2) {
+		characterBaseBlock = bg2CharacterBaseBlock;
+		screenBaseBlock = bg2ScreenBaseBlock;
+		wrapping = bg2Wrapping;
+		screenSize = 128 << bg2ScreenSize;
+		affX = internalBG2X;
+		affY = internalBG2Y;
+		pa = (float)((i16)BG2PA) / 255;
+		pc = (float)((i16)BG2PC) / 255;
+	} else if (bgNum == 3) {
+		characterBaseBlock = bg3CharacterBaseBlock;
+		screenBaseBlock = bg3ScreenBaseBlock;
+		wrapping = bg3Wrapping;
+		screenSize = 128 << bg3ScreenSize;
+		affX = internalBG3X;
+		affY = internalBG3Y;
+		pa = (float)((i16)BG3PA) / 255;
+		pc = (float)((i16)BG3PC) / 255;
+	}
+
+	for (int i = 0; i < 240; i++) {
+		int tilemapIndex = (screenBaseBlock * 0x800) + ((((int)affY & (screenSize - 1)) / 8) * (screenSize / 8)) + (((int)affX & (screenSize - 1)) / 8);
+
+		int tileAddress = (characterBaseBlock * 0x4000) + (vram[tilemapIndex] * 64) + (((int)affY & 7) * 8) + ((int)affX & 7);
+		if (tileAddress >= 0x10000)
+			break;
+
+		u8 tileData = vram[tileAddress];
+		if (!wrapping && (((unsigned int)affY >= (unsigned int)screenSize) || ((unsigned int)affX >= (unsigned int)screenSize))) {
+			tileData = 0;
+		}
+
+		Pixel *pix = &lineBuffer[bgNum][i];
+		pix->inWin0 = false;
+		pix->inWin1 = false;
+		pix->inWinOut = false;
+
+		if (window0DisplayFlag)
+			if ((i >= win0Left) && (i < win0Right) && win0VertFits)
+				pix->inWin0 = true;
+		if (window1DisplayFlag)
+			if ((i >= win1Left) && (i < win1Right) && win1VertFits)
+				pix->inWin1 = true;
+		pix->inWinOut = !(pix->inWin0 || pix->inWin1);
+
+		pix->priority = (tileData == 0) ? -1 : bgNum;
+		pix->color = convertColor(paletteColors[tileData]);
+
+		affX += pa;
+		affY += pc;
 	}
 }
 
@@ -392,12 +479,14 @@ void GBAPPU::drawScanline() {
 	case 1:
 		if (screenDisplayBg0) drawBg<0>();
 		if (screenDisplayBg1) drawBg<1>();
+		if (screenDisplayBg2) drawBgAff<2>();
 		if (screenDisplayObj) drawObjects();
 
 		for (int i = 0; i < 240; i++) {
 			// Window
 			if (window0DisplayFlag || window1DisplayFlag) {
 				for (int layer = 3; layer >= 0; layer--) {
+					if (lineBuffer[2][i].inWinOut && winOutBg2Enable && (bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
 					if (lineBuffer[1][i].inWinOut && winOutBg1Enable && (bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
 					if (lineBuffer[0][i].inWinOut && winOutBg0Enable && (bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
 					if (lineBuffer[4 + layer][i].inWinOut && winOutObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
@@ -405,6 +494,7 @@ void GBAPPU::drawScanline() {
 
 				if (window1DisplayFlag) {
 					for (int layer = 3; layer >= 0; layer--) {
+						if (lineBuffer[2][i].inWin1 && !lineBuffer[2][i].inWin0 && win1Bg2Enable && (bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
 						if (lineBuffer[1][i].inWin1 && !lineBuffer[1][i].inWin0 && win1Bg1Enable && (bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
 						if (lineBuffer[0][i].inWin1 && !lineBuffer[0][i].inWin0 && win1Bg0Enable && (bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
 						if (lineBuffer[4 + layer][i].inWin1 && !lineBuffer[4 + layer][i].inWin0 && win1ObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
@@ -413,6 +503,7 @@ void GBAPPU::drawScanline() {
 
 				if (window0DisplayFlag) {
 					for (int layer = 3; layer >= 0; layer--) {
+						if (lineBuffer[2][i].inWin0 && win0Bg2Enable && (bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
 						if (lineBuffer[1][i].inWin0 && win0Bg1Enable && (bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
 						if (lineBuffer[0][i].inWin0 && win0Bg0Enable && (bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
 						if (lineBuffer[4 + layer][i].inWin0 && win0ObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
@@ -420,8 +511,49 @@ void GBAPPU::drawScanline() {
 				}
 			} else {
 				for (int layer = 3; layer >= 0; layer--) {
+					if ((bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
 					if ((bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
 					if ((bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
+					if (screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+				}
+			}
+
+			framebuffer[currentScanline][i] = mergedBuffer[i].color;
+		}
+		break;
+	case 2:
+		if (screenDisplayBg2) drawBgAff<2>();
+		if (screenDisplayBg3) drawBgAff<3>();
+		if (screenDisplayObj) drawObjects();
+
+		for (int i = 0; i < 240; i++) {
+			// Window
+			if (window0DisplayFlag || window1DisplayFlag) {
+				for (int layer = 3; layer >= 0; layer--) {
+					if (lineBuffer[3][i].inWinOut && winOutBg3Enable && (bg3Priority == layer) && screenDisplayBg3 && (lineBuffer[3][i].priority != -1)) mergedBuffer[i] = lineBuffer[3][i];
+					if (lineBuffer[2][i].inWinOut && winOutBg2Enable && (bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
+					if (lineBuffer[4 + layer][i].inWinOut && winOutObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+				}
+
+				if (window1DisplayFlag) {
+					for (int layer = 3; layer >= 0; layer--) {
+						if (lineBuffer[3][i].inWin1 && !lineBuffer[3][i].inWin0 && win1Bg3Enable && (bg3Priority == layer) && screenDisplayBg3 && (lineBuffer[3][i].priority != -1)) mergedBuffer[i] = lineBuffer[3][i];
+						if (lineBuffer[2][i].inWin1 && !lineBuffer[2][i].inWin0 && win1Bg2Enable && (bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
+						if (lineBuffer[4 + layer][i].inWin1 && !lineBuffer[4 + layer][i].inWin0 && win1ObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+					}
+				}
+
+				if (window0DisplayFlag) {
+					for (int layer = 3; layer >= 0; layer--) {
+						if (lineBuffer[3][i].inWin0 && win0Bg3Enable && (bg3Priority == layer) && screenDisplayBg3 && (lineBuffer[3][i].priority != -1)) mergedBuffer[i] = lineBuffer[3][i];
+						if (lineBuffer[2][i].inWin0 && win0Bg2Enable && (bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
+						if (lineBuffer[4 + layer][i].inWin0 && win0ObjEnable && screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
+					}
+				}
+			} else {
+				for (int layer = 3; layer >= 0; layer--) {
+					if ((bg3Priority == layer) && screenDisplayBg3 && (lineBuffer[3][i].priority != -1)) mergedBuffer[i] = lineBuffer[3][i];
+					if ((bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
 					if (screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
 				}
 			}
@@ -432,9 +564,11 @@ void GBAPPU::drawScanline() {
 	case 3:
 		drawObjects();
 		for (int i = 0; i < 240; i++) {
-			auto vramIndex = ((currentScanline * 240) + i) * 2;
-			u16 vramData = (vram[vramIndex + 1] << 8) | vram[vramIndex];
-			framebuffer[currentScanline][i] = convertColor(vramData);
+			if (screenDisplayBg2) {
+				auto vramIndex = ((currentScanline * 240) + i) * 2;
+				u16 vramData = (vram[vramIndex + 1] << 8) | vram[vramIndex];
+				framebuffer[currentScanline][i] = convertColor(vramData);
+			}
 
 			for (int layer = 3; layer >= 0; layer--) {
 				if (screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1))
@@ -445,9 +579,11 @@ void GBAPPU::drawScanline() {
 	case 4:
 		drawObjects();
 		for (int i = 0; i < 240; i++) {
-			auto vramIndex = ((currentScanline * 240) + i) + (displayFrameSelect * 0xA000);
-			u8 vramData = vram[vramIndex];
-			framebuffer[currentScanline][i] = convertColor(paletteColors[vramData]);
+			if (screenDisplayBg2) {
+				auto vramIndex = ((currentScanline * 240) + i) + (displayFrameSelect * 0xA000);
+				u8 vramData = vram[vramIndex];
+				framebuffer[currentScanline][i] = convertColor(paletteColors[vramData]);
+			}
 
 			for (int layer = 3; layer >= 0; layer--) {
 				if (screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1))
@@ -458,7 +594,7 @@ void GBAPPU::drawScanline() {
 	case 5:
 		drawObjects();
 		for (int x = 0; x < 240; x++) {
-			if ((x < 160) && (currentScanline < 128)) {
+			if ((x < 160) && (currentScanline < 128) && screenDisplayBg2) {
 				auto vramIndex = (((currentScanline * 160) + x) * 2) + (displayFrameSelect * 0xA000);
 				u16 vramData = (vram[vramIndex + 1] << 8) | vram[vramIndex];
 				framebuffer[currentScanline][x] = convertColor(vramData);
@@ -471,6 +607,11 @@ void GBAPPU::drawScanline() {
 		}
 		break;
 	}
+
+	internalBG2X = (float)((i16)BG2PB) / 255;
+	internalBG2Y = (float)((i16)BG2PD) / 255;
+	internalBG3X = (float)((i16)BG3PB) / 255;
+	internalBG3Y = (float)((i16)BG3PD) / 255;
 }
 
 u8 GBAPPU::readIO(u32 address) {
@@ -555,52 +696,164 @@ void GBAPPU::writeIO(u32 address, u8 value) {
 		BG3CNT = (BG3CNT & 0x00FF) | (value << 8);
 		break;
 	case 0x4000010:
-		bg0XOffset = (bg0XOffset & 0x0100) | value;
+		BG0HOFS = (BG0HOFS & 0x0100) | value;
 		break;
 	case 0x4000011:
-		bg0XOffset = (bg0XOffset & 0x00FF) | ((value & 1) << 8);
+		BG0HOFS = (BG0HOFS & 0x00FF) | ((value & 1) << 8);
 		break;
 	case 0x4000012:
-		bg0YOffset = (bg0YOffset & 0x0100) | value;
+		BG0VOFS = (BG0VOFS & 0x0100) | value;
 		break;
 	case 0x4000013:
-		bg0YOffset = (bg0YOffset & 0x00FF) | ((value & 1) << 8);
+		BG0VOFS = (BG0VOFS & 0x00FF) | ((value & 1) << 8);
 		break;
 	case 0x4000014:
-		bg1XOffset = (bg1XOffset & 0x0100) | value;
+		BG1HOFS = (BG1HOFS & 0x0100) | value;
 		break;
 	case 0x4000015:
-		bg1XOffset = (bg1XOffset & 0x00FF) | ((value & 1) << 8);
+		BG1HOFS = (BG1HOFS & 0x00FF) | ((value & 1) << 8);
 		break;
 	case 0x4000016:
-		bg1YOffset = (bg1YOffset & 0x0100) | value;
+		BG1VOFS = (BG1VOFS & 0x0100) | value;
 		break;
 	case 0x4000017:
-		bg1YOffset = (bg1YOffset & 0x00FF) | ((value & 1) << 8);
+		BG1VOFS = (BG1VOFS & 0x00FF) | ((value & 1) << 8);
 		break;
 	case 0x4000018:
-		bg2XOffset = (bg2XOffset & 0x0100) | value;
+		BG2HOFS = (BG2HOFS & 0x0100) | value;
 		break;
 	case 0x4000019:
-		bg2XOffset = (bg2XOffset & 0x00FF) | ((value & 1) << 8);
+		BG2HOFS = (BG2HOFS & 0x00FF) | ((value & 1) << 8);
 		break;
 	case 0x400001A:
-		bg2YOffset = (bg2YOffset & 0x0100) | value;
+		BG2VOFS = (BG2VOFS & 0x0100) | value;
 		break;
 	case 0x400001B:
-		bg2YOffset = (bg2YOffset & 0x00FF) | ((value & 1) << 8);
+		BG2VOFS = (BG2VOFS & 0x00FF) | ((value & 1) << 8);
 		break;
 	case 0x400001C:
-		bg3XOffset = (bg3XOffset & 0x0100) | value;
+		BG3HOFS = (BG3HOFS & 0x0100) | value;
 		break;
 	case 0x400001D:
-		bg3XOffset = (bg3XOffset & 0x00FF) | ((value & 1) << 8);
+		BG3HOFS = (BG3HOFS & 0x00FF) | ((value & 1) << 8);
 		break;
 	case 0x400001E:
-		bg3YOffset = (bg3YOffset & 0x0100) | value;
+		BG3VOFS = (BG3VOFS & 0x0100) | value;
 		break;
 	case 0x400001F:
-		bg3YOffset = (bg3YOffset & 0x00FF) | ((value & 1) << 8);
+		BG3VOFS = (BG3VOFS & 0x00FF) | ((value & 1) << 8);
+		break;
+	case 0x4000020:
+		BG2PA = (BG2PA & 0xFF00) | value;
+		break;
+	case 0x4000021:
+		BG2PA = (BG2PA & 0x00FF) | (value << 8);
+		break;
+	case 0x4000022:
+		BG2PB = (BG2PB & 0xFF00) | value;
+		break;
+	case 0x4000023:
+		BG2PB = (BG2PB & 0x00FF) | (value << 8);
+		break;
+	case 0x4000024:
+		BG2PC = (BG2PC & 0xFF00) | value;
+		break;
+	case 0x4000025:
+		BG2PC = (BG2PC & 0x00FF) | (value << 8);
+		break;
+	case 0x4000026:
+		BG2PD = (BG2PD & 0xFF00) | value;
+		break;
+	case 0x4000027:
+		BG2PD = (BG2PD & 0x00FF) | (value << 8);
+		break;
+	case 0x4000028:
+		BG2X = (BG2X & 0xFFFFFF00) | value;
+		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 255;
+		break;
+	case 0x4000029:
+		BG2X = (BG2X & 0xFFFF00FF) | (value << 8);
+		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 255;
+		break;
+	case 0x400002A:
+		BG2X = (BG2X & 0xFF00FFFF) | (value << 16);
+		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 255;
+		break;
+	case 0x400002B:
+		BG2X = (BG2X & 0x00FFFFFF) | ((value & 0x0F) << 24);
+		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 255;
+		break;
+	case 0x400002C:
+		BG2Y = (BG2Y & 0xFFFFFF00) | value;
+		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 255;
+		break;
+	case 0x400002D:
+		BG2Y = (BG2Y & 0xFFFF00FF) | (value << 8);
+		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 255;
+		break;
+	case 0x400002E:
+		BG2Y = (BG2Y & 0xFF00FFFF) | (value << 16);
+		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 255;
+		break;
+	case 0x400002F:
+		BG2Y = (BG2Y & 0x00FFFFFF) | ((value & 0x0F) << 24);
+		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 255;
+		break;
+	case 0x4000030:
+		BG3PA = (BG3PA & 0xFF00) | value;
+		break;
+	case 0x4000031:
+		BG3PA = (BG3PA & 0x00FF) | (value << 8);
+		break;
+	case 0x4000032:
+		BG3PB = (BG3PB & 0xFF00) | value;
+		break;
+	case 0x4000033:
+		BG3PB = (BG3PB & 0x00FF) | (value << 8);
+		break;
+	case 0x4000034:
+		BG3PC = (BG3PC & 0xFF00) | value;
+		break;
+	case 0x4000035:
+		BG3PC = (BG3PC & 0x00FF) | (value << 8);
+		break;
+	case 0x4000036:
+		BG3PD = (BG3PD & 0xFF00) | value;
+		break;
+	case 0x4000037:
+		BG3PD = (BG3PD & 0x00FF) | (value << 8);
+		break;
+	case 0x4000038:
+		BG3X = (BG3X & 0xFFFFFF00) | value;
+		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 255;
+		break;
+	case 0x4000039:
+		BG3X = (BG3X & 0xFFFF00FF) | (value << 8);
+		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 255;
+		break;
+	case 0x400003A:
+		BG3X = (BG3X & 0xFF00FFFF) | (value << 16);
+		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 255;
+		break;
+	case 0x400003B:
+		BG3X = (BG3X & 0x00FFFFFF) | ((value & 0x0F) << 24);
+		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 255;
+		break;
+	case 0x400003C:
+		BG3Y = (BG3Y & 0xFFFFFF00) | value;
+		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 255;
+		break;
+	case 0x400003D:
+		BG3Y = (BG3Y & 0xFFFF00FF) | (value << 8);
+		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 255;
+		break;
+	case 0x400003E:
+		BG3Y = (BG3Y & 0xFF00FFFF) | (value << 16);
+		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 255;
+		break;
+	case 0x400003F:
+		BG3Y = (BG3Y & 0x00FFFFFF) | ((value & 0x0F) << 24);
+		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 255;
 		break;
 	case 0x4000040:
 		WIN0H = (WIN0H & 0xFF00) | value;
