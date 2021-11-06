@@ -422,6 +422,9 @@ void GBAPPU::drawBgAff() {
 }
 
 void GBAPPU::drawScanline() {
+	if (forcedBlank) // I honestly just wanted an excuse to make a mildly cursed for loop
+		for (int i = 0; i < 240; framebuffer[currentScanline][i++] = 0xFFFF);
+
 	for (int i = 0; i < 240; i++)
 		mergedBuffer[i].color = convertColor(paletteColors[0]);
 

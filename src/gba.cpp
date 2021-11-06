@@ -157,6 +157,9 @@ T GameBoyAdvance::read(u32 address) {
 
 			case 0x0B0 ... 0x0DF: // DMA
 				return dma.readIO(address);
+			
+			case 0x100 ... 0x10F: // Timer
+				return timer.readIO(address);
 
 			case 0x130: // Joypad
 				return (u8)KEYINPUT;
@@ -232,6 +235,10 @@ void GameBoyAdvance::write(u32 address, T value) {
 
 			case 0x0B0 ... 0x0DF: // DMA
 				dma.writeIO(address, value);
+				break;
+
+			case 0x100 ... 0x10F: // Timer
+				timer.writeIO(address, value);
 				break;
 
 			case 0x132: // Joypad
