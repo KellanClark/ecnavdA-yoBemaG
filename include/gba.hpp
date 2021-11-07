@@ -51,13 +51,27 @@ public:
 
 	std::stringstream log;
 
+	enum {
+		UNKNOWN,
+		EEPROM_512B,
+		EEPROM_8K,
+		SRAM_32K,
+		FLASH_64K,
+		FLASH_128K
+	} saveType;
+	std::filesystem::path saveFilePath;
+	enum {
+		READY,
+		CMD_1,
+		CMD_2
+	} flashState;
+
 	std::vector<u8> biosBuff;
 	u8 ewram[0x40000];
 	u8 iwram[0x8000];
 	u16 KEYINPUT;
 	u16 KEYCNT;
 	std::vector<u8> romBuff;
-	std::filesystem::path saveFilePath;
 	std::vector<u8> sram;
 
 private:

@@ -308,7 +308,19 @@ void GBAPPU::drawBg() {
 	int x = xOffset;
 	int y = currentScanline + yOffset;
 
+	bool win0HorzFits = win0Right < win0Left;
+	bool win1HorzFits = win1Right < win1Left;
+
 	for (int i = 0; i < 240; i++) {
+		if (win0Left == i)
+			win0HorzFits = true;
+		if (win0Right == i)
+			win0HorzFits = false;
+		if (win1Left == i)
+			win1HorzFits = true;
+		if (win1Right == i)
+			win1HorzFits = false;
+
 		if (((x % 8) == 0) || (i == 0)) { // Fetch new tile
 			int tilemapIndex = (this->*tilemapIndexLUT[(bgNum * 4) + screenSize])(x, y);
 
@@ -344,10 +356,10 @@ void GBAPPU::drawBg() {
 		pix->inWinOut = false;
 
 		if (window0DisplayFlag)
-			if ((i >= win0Left) && (i < win0Right) && win0VertFits)
+			if (win0HorzFits && win0VertFits)
 				pix->inWin0 = true;
 		if (window1DisplayFlag)
-			if ((i >= win1Left) && (i < win1Right) && win1VertFits)
+			if (win1HorzFits && win1VertFits)
 				pix->inWin1 = true;
 		pix->inWinOut = !(pix->inWin0 || pix->inWin1);
 
@@ -388,7 +400,19 @@ void GBAPPU::drawBgAff() {
 		pc = (float)((i16)BG3PC) / 255;
 	}
 
+	bool win0HorzFits = win0Right < win0Left;
+	bool win1HorzFits = win1Right < win1Left;
+
 	for (int i = 0; i < 240; i++) {
+		if (win0Left == i)
+			win0HorzFits = true;
+		if (win0Right == i)
+			win0HorzFits = false;
+		if (win1Left == i)
+			win1HorzFits = true;
+		if (win1Right == i)
+			win1HorzFits = false;
+
 		int tilemapIndex = (screenBaseBlock * 0x800) + ((((int)affY & (screenSize - 1)) / 8) * (screenSize / 8)) + (((int)affX & (screenSize - 1)) / 8);
 
 		int tileAddress = (characterBaseBlock * 0x4000) + (vram[tilemapIndex] * 64) + (((int)affY & 7) * 8) + ((int)affX & 7);
@@ -406,10 +430,10 @@ void GBAPPU::drawBgAff() {
 		pix->inWinOut = false;
 
 		if (window0DisplayFlag)
-			if ((i >= win0Left) && (i < win0Right) && win0VertFits)
+			if (win0HorzFits && win0VertFits)
 				pix->inWin0 = true;
 		if (window1DisplayFlag)
-			if ((i >= win1Left) && (i < win1Right) && win1VertFits)
+			if (win1HorzFits && win1VertFits)
 				pix->inWin1 = true;
 		pix->inWinOut = !(pix->inWin0 || pix->inWin1);
 

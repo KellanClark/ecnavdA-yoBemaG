@@ -161,7 +161,7 @@ void GBADMA::doDma() {
 	}
 
 	if (logDma) {
-		bus.log << fmt::format("DMA Channel {} from 0x{:0>7X} to 0x{:0>7X} with control = 0x{:0>8X}\n", channel, *sourceAddress, *destinationAddress, control->raw);
+		bus.log << fmt::format("DMA Channel {} from 0x{:0>7X} to 0x{:0>7X} of length 0x{:0>4X} with control = 0x{:0>4X}\n", channel, *sourceAddress, *destinationAddress, (u16)control->raw, control->raw >> 16);
 	}
 
 	if (control->transferSize) { // 32 bit

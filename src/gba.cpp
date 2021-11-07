@@ -1,6 +1,8 @@
 
 #include "gba.hpp"
 #include "scheduler.hpp"
+#include <cstddef>
+#include <cstdio>
 
 #define toPage(x) (x >> 15)
 
@@ -42,6 +44,22 @@ void GameBoyAdvance::reset() {
 	dma.reset();
 	ppu.reset();
 	timer.reset();
+}
+
+bool searchForString(char *array, size_t arraySize, char *pattern, size_t patternSize) {
+	size_t i = 0;
+	while (i < arraySize) {
+		size_t patternIndex = -1;
+		do {
+			if (patternIndex == (patternSize - 1))
+				return true;
+
+			++patternIndex;
+			++i;
+		} while (array[i] == pattern[patternIndex]);
+	}
+
+	return false;
 }
 
 int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_) {
@@ -100,8 +118,40 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 
 	std::ifstream saveFileStream{saveFilePath, std::ios::binary};
 	saveFileStream.seekg(0, std::ios::beg);
-	sram.resize(0x10000);
-	saveFileStream.read(reinterpret_cast<char*>(sram.data()), 0x10000);
+
+	// Get save type/size
+	char eeprom8KStr[] = "EEPROM_V";
+	if (searchForString((char *)romBuff.data(), romBuff.size(), eeprom8KStr, sizeof(eeprom8KStr) - 1)) {
+		saveType = EEPROM_8K;
+		sram.resize(8 * 1024);
+	}
+	char sram32KStr[] = "SRAM_V";
+	if (searchForString((char *)romBuff.data(), romBuff.size(), sram32KStr, sizeof(sram32KStr) - 1)) {
+		saveType = SRAM_32K;
+		sram.resize(32 * 1024);
+	}
+	char flash1MStr[] = "FLASH1M_V";
+	if (searchForString((char *)romBuff.data(), romBuff.size(), flash1MStr, sizeof(flash1MStr) - 1)) {
+		saveType = FLASH_128K;
+		sram.resize(128 * 1024);
+	}
+	/*if (buf.find("EEPROM_V") != std::string::npos) {
+		saveType = EEPROM_8K;
+		sram.resize(8 * 1024);
+	} else if (buf.find("SRAM_V") != std::string::npos) {
+		saveType = SRAM_32K;
+		sram.resize(32 * 1024);
+	} else if ((buf.find("FLASH_V") != std::string::npos) || (buf.find("FLASH512_V") != std::string::npos)) {
+		saveType = FLASH_64K;
+		sram.resize(64 * 1024);
+	} else if (buf.find("FLASH1M_V") != std::string::npos) {
+		saveType = FLASH_128K;
+		sram.resize(128 * 1024);
+	}
+	saveType = FLASH_128K;
+	sram.resize(128 * 1024);*/
+
+	saveFileStream.read(reinterpret_cast<char*>(sram.data()), sram.size());
 	saveFileStream.close();
 
 	cpu.running = true;
@@ -189,13 +239,30 @@ T GameBoyAdvance::read(u32 address) {
 			std::memcpy(&val, &ppu.oam[0] + (offset & 0x3FF), sizeof(T));
 			return val;
 		case toPage(0xE000000) ... toPage(0x10000000) - 1:
-			std::memcpy(&val, &sram[0] + (offset & 0x3FF), sizeof(T));
+			if (saveType == SRAM_32K) {
+				val = sram[offset];
+				if ((sizeof(T) > 1) && (offset & 3))
+					printf("testR\n");
 
-			if (sizeof(T) >= 2)
-				val |= val << 8;
-			if (sizeof(T) == 4)
-				val |= val << 16;
-			return val;
+				if (sizeof(T) >= 2)
+					val |= val << 8;
+				if (sizeof(T) == 4)
+					val |= val << 16;
+				return val;
+			} else if (saveType == FLASH_64K) { // Stub flash
+				if (address == 0xE000000) {
+					return 0x32;
+				} else if (address == 0xE000001) {
+					return 0x1B;
+				}
+			} else if (saveType == FLASH_128K) {
+				if (address == 0xE000000) {
+					return 0x62;
+				} else if (address == 0xE000001) {
+					return 0x13;
+				}
+			}
+			break;
 		}
 	}
 
@@ -293,7 +360,12 @@ void GameBoyAdvance::write(u32 address, T value) {
 			}
 			break;
 		case toPage(0xE000000) ... toPage(0x10000000) - 1:
-			std::memcpy(&sram[0] + (address & 0xFFFF), &value, sizeof(T));
+			if (saveType == SRAM_32K) {
+				sram[offset] = (u8)value;
+
+				if ((sizeof(T) > 1) && (offset & 3))
+					printf("testR\n");
+			}
 			break;
 		}
 	}

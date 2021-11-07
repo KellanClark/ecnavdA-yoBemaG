@@ -339,8 +339,31 @@ void mainMenuBar() {
 void romInfoWindow() {
 	ImGui::Begin("ROM Info", &showRomInfo);
 
-	ImGui::Text("ROM File:  %s\n", argRomFilePath.c_str());
-	ImGui::Text("BIOS File:  %s\n", argBiosFilePath.c_str());
+	std::string saveTypeString;
+	switch (GBA.saveType) {
+	case GameBoyAdvance::UNKNOWN:
+		saveTypeString = "Unknown";
+		break;
+	case GameBoyAdvance::EEPROM_512B:
+		saveTypeString = "512 byte EEPROM";
+		break;
+	case GameBoyAdvance::EEPROM_8K:
+		saveTypeString = "8 kilobyte EEPROM";
+		break;
+	case GameBoyAdvance::SRAM_32K:
+		saveTypeString = "32 kilobyte SRAM";
+		break;
+	case GameBoyAdvance::FLASH_64K:
+		saveTypeString = "64 kilobyte Flash";
+		break;
+	case GameBoyAdvance::FLASH_128K:
+		saveTypeString = "128 kilobyte Flash";
+		break;
+	}
+
+	ImGui::Text("ROM File:  %s", argRomFilePath.c_str());
+	ImGui::Text("BIOS File:  %s", argBiosFilePath.c_str());
+	ImGui::Text("Save Type:  %s", saveTypeString.c_str());
 
 	ImGui::End();
 }
