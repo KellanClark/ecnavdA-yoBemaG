@@ -162,6 +162,28 @@ void GBADMA::doDma() {
 
 	if (logDma) {
 		bus.log << fmt::format("DMA Channel {} from 0x{:0>7X} to 0x{:0>7X} of length 0x{:0>4X} with control = 0x{:0>4X}\n", channel, *sourceAddress, *destinationAddress, (u16)control->raw, control->raw >> 16);
+		bus.log << "Request Interrupt: " << (control->requestInterrupt ? "True" : "False") << "  Timing: ";
+		switch (control->timing) {
+		case 0: bus.log << "Immediately"; break;
+		case 1: bus.log << "VBlank"; break;
+		case 2: bus.log << "HBlank"; break;
+		case 3: bus.log << "Refresh"; break;
+		}
+		bus.log << "  Chunk Size: " << (16 << control->transferSize) << "-bit  Repeat: " << (control->repeat ? "True" : "False") << "\n";
+		bus.log << "Source Adjustment: ";
+		switch (control->srcControl) {
+		case 0: bus.log << "Increment"; break;
+		case 1: bus.log << "Decrement"; break;
+		case 2: bus.log << "Fixed"; break;
+		}
+		bus.log << "  Destination Adjustment: ";
+		switch (control->dstControl) {
+		case 0: bus.log << "Increment"; break;
+		case 1: bus.log << "Decrement"; break;
+		case 2: bus.log << "Fixed"; break;
+		case 3: bus.log << "Increment/Reload"; break;
+		}
+		bus.log << "\nScanline " << bus.ppu.currentScanline << "\n";
 	}
 
 	if (control->transferSize) { // 32 bit

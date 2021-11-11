@@ -130,26 +130,21 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 		saveType = SRAM_32K;
 		sram.resize(32 * 1024);
 	}
+	char flash64KStr[] = "FLASH_V";
+	if (searchForString((char *)romBuff.data(), romBuff.size(), flash64KStr, sizeof(flash64KStr) - 1)) {
+		saveType = FLASH_64K;
+		sram.resize(64 * 1024);
+	}
+	char flash64KAltStr[] = "FLASH512_V";
+	if (searchForString((char *)romBuff.data(), romBuff.size(), flash64KAltStr, sizeof(flash64KAltStr) - 1)) {
+		saveType = FLASH_64K;
+		sram.resize(64 * 1024);
+	}
 	char flash1MStr[] = "FLASH1M_V";
 	if (searchForString((char *)romBuff.data(), romBuff.size(), flash1MStr, sizeof(flash1MStr) - 1)) {
 		saveType = FLASH_128K;
 		sram.resize(128 * 1024);
 	}
-	/*if (buf.find("EEPROM_V") != std::string::npos) {
-		saveType = EEPROM_8K;
-		sram.resize(8 * 1024);
-	} else if (buf.find("SRAM_V") != std::string::npos) {
-		saveType = SRAM_32K;
-		sram.resize(32 * 1024);
-	} else if ((buf.find("FLASH_V") != std::string::npos) || (buf.find("FLASH512_V") != std::string::npos)) {
-		saveType = FLASH_64K;
-		sram.resize(64 * 1024);
-	} else if (buf.find("FLASH1M_V") != std::string::npos) {
-		saveType = FLASH_128K;
-		sram.resize(128 * 1024);
-	}
-	saveType = FLASH_128K;
-	sram.resize(128 * 1024);*/
 
 	saveFileStream.read(reinterpret_cast<char*>(sram.data()), sram.size());
 	saveFileStream.close();
@@ -241,8 +236,6 @@ T GameBoyAdvance::read(u32 address) {
 		case toPage(0xE000000) ... toPage(0x10000000) - 1:
 			if (saveType == SRAM_32K) {
 				val = sram[offset];
-				if ((sizeof(T) > 1) && (offset & 3))
-					printf("testR\n");
 
 				if (sizeof(T) >= 2)
 					val |= val << 8;
@@ -362,9 +355,6 @@ void GameBoyAdvance::write(u32 address, T value) {
 		case toPage(0xE000000) ... toPage(0x10000000) - 1:
 			if (saveType == SRAM_32K) {
 				sram[offset] = (u8)value;
-
-				if ((sizeof(T) > 1) && (offset & 3))
-					printf("testR\n");
 			}
 			break;
 		}

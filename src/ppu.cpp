@@ -3,9 +3,8 @@
 #include "gba.hpp"
 #include "scheduler.hpp"
 #include "types.hpp"
-#include <array>
 #include <cstdio>
-#include <cstdlib>
+#include <locale>
 
 #define convertColor(x) (x | 0x8000)
 
@@ -34,6 +33,8 @@ void GBAPPU::reset() {
 	BG3HOFS = BG3VOFS = 0;
 	BG2PA = BG2PB = BG2PC = BG2PD = BG2X = BG2Y = 0;
 	BG3PA = BG3PB = BG3PC = BG3PD = BG3X = BG3Y = 0;
+	WIN0H = WIN1H = WIN0V = WIN1V = 0;
+	WININ = WINOUT = 0;
 
 	systemEvents.addEvent(1232, lineStartEvent, this);
 	systemEvents.addEvent(960, hBlankEvent, this);
@@ -58,10 +59,10 @@ void GBAPPU::lineStart() {
 		currentScanline = 0;
 		vBlankFlag = false;
 
-		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 255;
-		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 255;
-		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 255;
-		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 255;
+		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 256;
+		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 256;
+		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 256;
+		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 256;
 	}
 
 	if (vCountSetting == currentScanline) {
@@ -133,11 +134,11 @@ void GBAPPU::drawObjects() {
 				float affX = 0;
 				float affY = 0;
 				if (obj->objMode == 1) { // Affine
-					affX = (((float)((i16)mat.pb) / 255) * (y - ((float)(ySize - 1) / 2))) + (((float)((i16)mat.pa) / 255) * ((float)(xSize - 1) / -2)) + ((float)(xSize - 1) / 2);
-					affY = (((float)((i16)mat.pd) / 255) * (y - ((float)(ySize - 1) / 2))) + (((float)((i16)mat.pc) / 255) * ((float)(xSize - 1) / -2)) + ((float)(ySize - 1) / 2);
+					affX = (((float)((i16)mat.pb) / 256) * (y - ((float)(ySize - 1) / 2))) + (((float)((i16)mat.pa) / 256) * ((float)(xSize - 1) / -2)) + ((float)(xSize - 1) / 2);
+					affY = (((float)((i16)mat.pd) / 256) * (y - ((float)(ySize - 1) / 2))) + (((float)((i16)mat.pc) / 256) * ((float)(xSize - 1) / -2)) + ((float)(ySize - 1) / 2);
 				} else if (obj->objMode == 3) { // Affine double size
-					affX = (((float)((i16)mat.pb) / 255) * (y - (float)(ySize - 1))) + (((float)((i16)mat.pa) / 255) * ((float)(xSize - 1) * -1)) + ((float)(xSize - 1) / 2);
-					affY = (((float)((i16)mat.pd) / 255) * (y - (float)(ySize - 1))) + (((float)((i16)mat.pc) / 255) * ((float)(xSize - 1) * -1)) + ((float)(ySize - 1) / 2);
+					affX = (((float)((i16)mat.pb) / 256) * (y - (float)(ySize - 1))) + (((float)((i16)mat.pa) / 256) * ((float)(xSize - 1) * -1)) + ((float)(xSize - 1) / 2);
+					affY = (((float)((i16)mat.pd) / 256) * (y - (float)(ySize - 1))) + (((float)((i16)mat.pc) / 256) * ((float)(xSize - 1) * -1)) + ((float)(ySize - 1) / 2);
 
 					ySize <<= 1;
 				}
@@ -156,8 +157,9 @@ void GBAPPU::drawObjects() {
 				for (int relX = 0; relX < (xSize << (obj->objMode == 3)); relX++) {
 					if (x < 240) {
 						if ((obj->objMode == 1) || (obj->objMode == 3)) {
+							//if (((unsigned int)affX < (unsigned int)xSize) && ((unsigned int)affY < (unsigned int)ySize))
 							if ((affX >= 0) && (affX < xSize) && (affY >= 0) && (affY < ySize)) {
-								tileDataAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((int)affY / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((int)affX / 8)) * (32 << obj->bpp)) + (((int)affY % 8) * (4 << obj->bpp)) + (((int)affX % 8) / (2 >> obj->bpp));
+								tileDataAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((int)affY / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((int)affX / 8)) * (32 << obj->bpp)) + (((unsigned int)affY & 7) * (4 << obj->bpp)) + (((unsigned int)affX & 7) / (2 >> obj->bpp));
 
 								tileData = vram[tileDataAddress];
 								if ((int)affX & 1) {
@@ -168,9 +170,6 @@ void GBAPPU::drawObjects() {
 							} else {
 								tileData = 0;
 							}
-
-							affX += (float)((i16)mat.pa) / 255;
-							affY += (float)((i16)mat.pc) / 255;
 						} else {
 							if (((relX % 8) == 0) || (x == 0)) { // Fetch new tile
 								tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - y) : y) / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((obj->horizontolFlip ? (xSize - 1 - relX) : relX) / 8)) * (32 << obj->bpp)) + (yMod * (4 << obj->bpp));
@@ -211,6 +210,10 @@ void GBAPPU::drawObjects() {
 						}
 					}
 
+					if ((obj->objMode == 1) || (obj->objMode == 3)) {
+						affX += (float)((i16)mat.pa) / 256;
+						affY += (float)((i16)mat.pc) / 256;
+					}
 					x = (x + 1) & 0x1FF;
 				}
 			}
@@ -387,8 +390,8 @@ void GBAPPU::drawBgAff() {
 		screenSize = 128 << bg2ScreenSize;
 		affX = internalBG2X;
 		affY = internalBG2Y;
-		pa = (float)((i16)BG2PA) / 255;
-		pc = (float)((i16)BG2PC) / 255;
+		pa = (float)((i16)BG2PA) / 256;
+		pc = (float)((i16)BG2PC) / 256;
 	} else if (bgNum == 3) {
 		characterBaseBlock = bg3CharacterBaseBlock;
 		screenBaseBlock = bg3ScreenBaseBlock;
@@ -396,8 +399,8 @@ void GBAPPU::drawBgAff() {
 		screenSize = 128 << bg3ScreenSize;
 		affX = internalBG3X;
 		affY = internalBG3Y;
-		pa = (float)((i16)BG3PA) / 255;
-		pc = (float)((i16)BG3PC) / 255;
+		pa = (float)((i16)BG3PA) / 256;
+		pc = (float)((i16)BG3PC) / 256;
 	}
 
 	bool win0HorzFits = win0Right < win0Left;
@@ -538,9 +541,12 @@ void GBAPPU::drawScanline() {
 				}
 			} else {
 				for (int layer = 3; layer >= 0; layer--) {
-					if ((bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1)) mergedBuffer[i] = lineBuffer[2][i];
-					if ((bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1)) mergedBuffer[i] = lineBuffer[1][i];
-					if ((bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1)) mergedBuffer[i] = lineBuffer[0][i];
+					if ((bg2Priority == layer) && screenDisplayBg2 && (lineBuffer[2][i].priority != -1))
+						mergedBuffer[i] = lineBuffer[2][i];
+					if ((bg1Priority == layer) && screenDisplayBg1 && (lineBuffer[1][i].priority != -1))
+						mergedBuffer[i] = lineBuffer[1][i];
+					if ((bg0Priority == layer) && screenDisplayBg0 && (lineBuffer[0][i].priority != -1))
+						mergedBuffer[i] = lineBuffer[0][i];
 					if (screenDisplayObj && (lineBuffer[4 + layer][i].priority != -1)) mergedBuffer[i] = lineBuffer[4 + layer][i];
 				}
 			}
@@ -635,10 +641,10 @@ void GBAPPU::drawScanline() {
 		break;
 	}
 
-	internalBG2X = (float)((i16)BG2PB) / 255;
-	internalBG2Y = (float)((i16)BG2PD) / 255;
-	internalBG3X = (float)((i16)BG3PB) / 255;
-	internalBG3Y = (float)((i16)BG3PD) / 255;
+	internalBG2X += (float)((i16)BG2PB) / 256;
+	internalBG2Y += (float)((i16)BG2PD) / 256;
+	internalBG3X += (float)((i16)BG3PB) / 256;
+	internalBG3Y += (float)((i16)BG3PD) / 256;
 }
 
 u8 GBAPPU::readIO(u32 address) {
@@ -693,7 +699,7 @@ void GBAPPU::writeIO(u32 address, u8 value) {
 		DISPCNT = (DISPCNT & 0x00FF) | (value << 8);
 		break;
 	case 0x4000004:
-		DISPSTAT = (DISPSTAT & 0xFF00) | (value & 0x38);
+		DISPSTAT = (DISPSTAT & 0xFFC7) | (value & 0x38);
 		break;
 	case 0x4000005:
 		DISPSTAT = (DISPSTAT & 0x00FF) | (value << 8);
@@ -702,18 +708,18 @@ void GBAPPU::writeIO(u32 address, u8 value) {
 		BG0CNT = (BG0CNT & 0xFF00) | value;
 		break;
 	case 0x4000009:
-		BG0CNT = (BG0CNT & 0x00FF) | (value << 8);
+		BG0CNT = (BG0CNT & 0x00FF) | ((value & 0xDF) << 8);
 		break;
 	case 0x400000A:
 		BG1CNT = (BG1CNT & 0xFF00) | value;
 		break;
 	case 0x400000B:
-		BG1CNT = (BG1CNT & 0x00FF) | (value << 8);
+		BG1CNT = (BG1CNT & 0x00FF) | ((value & 0xDF) << 8);
 		break;
 	case 0x400000C:
 		BG2CNT = (BG2CNT & 0xFF00) | value;
 		break;
-	case 0x400000d:
+	case 0x400000D:
 		BG2CNT = (BG2CNT & 0x00FF) | (value << 8);
 		break;
 	case 0x400000E:
@@ -796,35 +802,35 @@ void GBAPPU::writeIO(u32 address, u8 value) {
 		break;
 	case 0x4000028:
 		BG2X = (BG2X & 0xFFFFFF00) | value;
-		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 255;
+		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 256;
 		break;
 	case 0x4000029:
 		BG2X = (BG2X & 0xFFFF00FF) | (value << 8);
-		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 255;
+		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 256;
 		break;
 	case 0x400002A:
 		BG2X = (BG2X & 0xFF00FFFF) | (value << 16);
-		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 255;
+		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 256;
 		break;
 	case 0x400002B:
 		BG2X = (BG2X & 0x00FFFFFF) | ((value & 0x0F) << 24);
-		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 255;
+		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 256;
 		break;
 	case 0x400002C:
 		BG2Y = (BG2Y & 0xFFFFFF00) | value;
-		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 255;
+		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 256;
 		break;
 	case 0x400002D:
 		BG2Y = (BG2Y & 0xFFFF00FF) | (value << 8);
-		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 255;
+		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 256;
 		break;
 	case 0x400002E:
 		BG2Y = (BG2Y & 0xFF00FFFF) | (value << 16);
-		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 255;
+		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 256;
 		break;
 	case 0x400002F:
 		BG2Y = (BG2Y & 0x00FFFFFF) | ((value & 0x0F) << 24);
-		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 255;
+		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 256;
 		break;
 	case 0x4000030:
 		BG3PA = (BG3PA & 0xFF00) | value;
@@ -852,35 +858,35 @@ void GBAPPU::writeIO(u32 address, u8 value) {
 		break;
 	case 0x4000038:
 		BG3X = (BG3X & 0xFFFFFF00) | value;
-		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 255;
+		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 256;
 		break;
 	case 0x4000039:
 		BG3X = (BG3X & 0xFFFF00FF) | (value << 8);
-		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 255;
+		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 256;
 		break;
 	case 0x400003A:
 		BG3X = (BG3X & 0xFF00FFFF) | (value << 16);
-		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 255;
+		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 256;
 		break;
 	case 0x400003B:
 		BG3X = (BG3X & 0x00FFFFFF) | ((value & 0x0F) << 24);
-		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 255;
+		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 256;
 		break;
 	case 0x400003C:
 		BG3Y = (BG3Y & 0xFFFFFF00) | value;
-		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 255;
+		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 256;
 		break;
 	case 0x400003D:
 		BG3Y = (BG3Y & 0xFFFF00FF) | (value << 8);
-		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 255;
+		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 256;
 		break;
 	case 0x400003E:
 		BG3Y = (BG3Y & 0xFF00FFFF) | (value << 16);
-		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 255;
+		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 256;
 		break;
 	case 0x400003F:
 		BG3Y = (BG3Y & 0x00FFFFFF) | ((value & 0x0F) << 24);
-		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 255;
+		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 256;
 		break;
 	case 0x4000040:
 		WIN0H = (WIN0H & 0xFF00) | value;

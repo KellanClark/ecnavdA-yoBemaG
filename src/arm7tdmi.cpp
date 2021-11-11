@@ -958,10 +958,10 @@ bool ARM7TDMI::computeShift(u32 opcode, u32 *result) {
 				}
 				break;
 			case 1: // LSR
-				if (shiftAmount == 0) {
+				if ((shiftAmount == 0) || (shiftAmount == 32)) {
 					shifterCarry = shiftOperand >> 31;
 					shiftOperand = 0;
-				} else if (shiftAmount > 31) {
+				} else if (shiftAmount > 32) {
 					shiftOperand = 0;
 					shifterCarry = false;
 				} else {
