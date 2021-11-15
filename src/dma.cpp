@@ -4,6 +4,7 @@
 #include "scheduler.hpp"
 #include "types.hpp"
 #include "gba.hpp"
+#include <cstdio>
 
 GBADMA::GBADMA(GameBoyAdvance& bus_) : bus(bus_) {
 	logDma = false;
@@ -84,6 +85,19 @@ void GBADMA::dmaEnd() {
 	checkDma();
 }
 
+void GBADMA::onVBlank() {
+	if ((currentDma != 0) && internalDMA0CNT.enable && (internalDMA0CNT.timing == 1))
+		dma0Queued = true;
+	if ((currentDma != 1) && internalDMA1CNT.enable && (internalDMA1CNT.timing == 1))
+		dma1Queued = true;
+	if ((currentDma != 2) && internalDMA2CNT.enable && (internalDMA2CNT.timing == 1))
+		dma2Queued = true;
+	if ((currentDma != 3) && internalDMA3CNT.enable && (internalDMA3CNT.timing == 1))
+		dma3Queued = true;
+	
+	checkDma();
+}
+
 void GBADMA::onHBlank() {
 	if ((currentDma != 0) && internalDMA0CNT.enable && (internalDMA0CNT.timing == 2))
 		dma0Queued = true;
@@ -97,16 +111,17 @@ void GBADMA::onHBlank() {
 	checkDma();
 }
 
-void GBADMA::onVBlank() {
-	if ((currentDma != 0) && internalDMA0CNT.enable && (internalDMA0CNT.timing == 1))
-		dma0Queued = true;
-	if ((currentDma != 1) && internalDMA1CNT.enable && (internalDMA1CNT.timing == 1))
+void GBADMA::onFifoA() {
+	if ((currentDma != 1) && internalDMA1CNT.enable && (internalDMA1CNT.timing == 3))
 		dma1Queued = true;
-	if ((currentDma != 2) && internalDMA2CNT.enable && (internalDMA2CNT.timing == 1))
+
+	checkDma();
+}
+
+void GBADMA::onFifoB() {
+	if ((currentDma != 2) && internalDMA2CNT.enable && (internalDMA2CNT.timing == 3))
 		dma2Queued = true;
-	if ((currentDma != 3) && internalDMA3CNT.enable && (internalDMA3CNT.timing == 1))
-		dma3Queued = true;
-	
+
 	checkDma();
 }
 
@@ -167,7 +182,7 @@ void GBADMA::doDma() {
 		case 0: bus.log << "Immediately"; break;
 		case 1: bus.log << "VBlank"; break;
 		case 2: bus.log << "HBlank"; break;
-		case 3: bus.log << "Refresh"; break;
+		case 3: bus.log << "DMA"; break;
 		}
 		bus.log << "  Chunk Size: " << (16 << control->transferSize) << "-bit  Repeat: " << (control->repeat ? "True" : "False") << "\n";
 		bus.log << "Source Adjustment: ";
@@ -188,8 +203,8 @@ void GBADMA::doDma() {
 
 	if (control->transferSize) { // 32 bit
 		for (int i = 0; i < control->numTransfers; i++) {
-			u32 data = bus.read<u32>(*sourceAddress);
-			bus.write<u32>(*destinationAddress, data);
+			u32 data = bus.read<u32>(*sourceAddress & ~3);
+			bus.write<u32>(*destinationAddress & ~3, data);
 
 			if ((control->dstControl == 0) || (control->dstControl == 3)) { // Increment
 				*destinationAddress += 4;
@@ -205,8 +220,8 @@ void GBADMA::doDma() {
 		}
 	} else { // 16 bit
 		for (int i = 0; i < control->numTransfers; i++) {
-			u16 data = bus.read<u16>(*sourceAddress);
-			bus.write<u16>(*destinationAddress, data);
+			u16 data = bus.read<u16>(*sourceAddress & ~1);
+			bus.write<u16>(*destinationAddress & ~1, data);
 
 			if ((control->dstControl == 0) || (control->dstControl == 3)) { // Increment
 				*destinationAddress += 2;

@@ -17,6 +17,8 @@ public:
 
 	void onVBlank();
 	void onHBlank();
+	void onFifoA();
+	void onFifoB();
 	void checkDma();
 	template <int channel> void doDma();
 

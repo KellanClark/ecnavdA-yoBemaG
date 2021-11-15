@@ -1,4 +1,5 @@
 
+#include "SDL_audio.h"
 #include "imgui.h"
 #include "backends/imgui_impl_sdl.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -16,7 +17,9 @@ bool argRomGiven;
 std::filesystem::path argRomFilePath;
 bool argBiosGiven;
 std::filesystem::path argBiosFilePath;
-bool argLogConsole;
+bool recordSound;
+bool argWavGiven;
+std::filesystem::path argWavFilePath;
 
 constexpr auto cexprHash(const char *str, std::size_t v = 0) noexcept -> std::size_t {
 	return (*str == 0) ? v : 31 * cexprHash(str + 1) + *str;
@@ -67,7 +70,16 @@ SDL_Scancode keymap[10] = {
 };
 u16 lastJoypad;
 
+// Audio stuff
+bool syncToAudio;
+SDL_AudioSpec desiredAudioSpec, audioSpec;
+SDL_AudioDeviceID audioDevice;
+std::vector<i32> wavFileData;
+std::ofstream wavFileStream;
+void audioCallback(void *userdata, uint8_t *stream, int len);
+
 // Everything else
+bool quit = false;
 int loadRom();
 
 int main(int argc, char *argv[]) {
@@ -75,7 +87,8 @@ int main(int argc, char *argv[]) {
 	argRomGiven = false;
 	argBiosGiven = false;
 	argBiosFilePath = "";
-	argLogConsole = false;
+	recordSound = false;
+	argWavGiven = false;
 	for (int i = 1; i < argc; i++) {
 		switch (cexprHash(argv[i])) {
 		case cexprHash("--rom"):
@@ -94,8 +107,14 @@ int main(int argc, char *argv[]) {
 			argBiosGiven = true;
 			argBiosFilePath = argv[i];
 			break;
-		case cexprHash("--log-to-console"):
-			argLogConsole = true;
+		case cexprHash("--record"):
+			if (argc == ++i) {
+				printf("Not enough arguments for flag --record\n");
+				return -1;
+			}
+			recordSound = true;
+			argWavGiven = true;
+			argWavFilePath = argv[i];
 			break;
 		default:
 			if (i == 1) {
@@ -105,6 +124,7 @@ int main(int argc, char *argv[]) {
 				printf("Unknown argument:  %s\n", argv[i]);
 				return -1;
 			}
+			break;
 		}
 	}
 	if (argRomGiven && argBiosGiven) {
@@ -134,6 +154,19 @@ int main(int argc, char *argv[]) {
 	SDL_GL_MakeCurrent(window, gl_context);
 	SDL_GL_SetSwapInterval(0);
 
+	// Setup Audio
+	desiredAudioSpec = {
+		.freq = 48000,
+		.format = AUDIO_S16,
+		.channels = 2,
+		.samples = 1024,
+		.callback = audioCallback,
+		.userdata = NULL
+	};
+	audioDevice = SDL_OpenAudioDevice(NULL, 0, &desiredAudioSpec, &audioSpec, 0);
+	SDL_PauseAudioDevice(audioDevice, 0);
+	GBA.apu.sampleRate = audioSpec.freq;
+
 	// Setup ImGui
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -160,7 +193,6 @@ int main(int argc, char *argv[]) {
 
 	u32 emuThreadTicks = 0;
 	u32 emuThreadTicksLast = 0;
-	bool quit = false;
 	SDL_Event event;
 	while (!quit) {
 		while (SDL_PollEvent(&event)) {
@@ -259,17 +291,58 @@ int main(int argc, char *argv[]) {
 	GBA.cpu.addThreadEvent(GBACPU::STOP, 0);
 	emuThread.detach();
 
+	// WAV file
+	if (argWavGiven) {
+		struct  __attribute__((__packed__)) {
+			char riffStr[4] = {'R', 'I', 'F', 'F'};
+			unsigned int fileSize = 0;
+			char waveStr[4] = {'W', 'A', 'V', 'E'};
+			char fmtStr[4] = {'f', 'm', 't', ' '};
+			unsigned int subchunk1Size = 16;
+			unsigned short audioFormat = 1;
+			unsigned short numChannels = 2;
+			unsigned int sampleRate = audioSpec.freq;
+			unsigned int byteRate = audioSpec.freq * sizeof(int16_t) * 2;
+			unsigned short blockAlign = 4;
+			unsigned short bitsPerSample = sizeof(int16_t) * 8;
+			char dataStr[4] = {'d', 'a', 't', 'a'};
+			unsigned int subchunk2Size = 0;
+		} wavHeaderData;
+		wavFileStream.open(argWavFilePath, std::ios::binary | std::ios::trunc);
+		wavHeaderData.subchunk2Size = (wavFileData.size() * sizeof(i16));
+		wavHeaderData.fileSize = sizeof(wavHeaderData) - 8 + wavHeaderData.subchunk2Size;
+		wavFileStream.write(reinterpret_cast<const char*>(&wavHeaderData), sizeof(wavHeaderData));
+		wavFileStream.write(reinterpret_cast<const char*>(wavFileData.data()), wavFileData.size() * sizeof(i16));
+		wavFileStream.close();
+	}
+
 	// ImGui
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
 	ImGui::DestroyContext();
 
 	// SDL
+	SDL_CloseAudioDevice(audioDevice);
 	SDL_GL_DeleteContext(gl_context);
 	SDL_DestroyWindow(window);
 	SDL_Quit();
 
 	return 0;
+}
+
+void audioCallback(void *userdata, uint8_t *stream, int len) {
+	while ((GBA.apu.sampleBufferIndex * sizeof(i16)) < len) {
+		if (quit)
+			return;
+	}
+
+	if (recordSound)
+		wavFileData.insert(wavFileData.end(), GBA.apu.sampleBuffer.begin(), GBA.apu.sampleBuffer.begin() + GBA.apu.sampleBufferIndex);
+	GBA.apu.sampleBufferIndex = 0;
+
+	memcpy(stream, &GBA.apu.sampleBuffer, len);
+
+	GBA.cpu.running = true;
 }
 
 int loadRom() {
@@ -311,10 +384,21 @@ void mainMenuBar() {
 			if (ImGui::MenuItem("Unpause"))
 				GBA.cpu.addThreadEvent(GBACPU::START);
 		}
-
 		if (ImGui::MenuItem("Reset")) {
 			GBA.cpu.addThreadEvent(GBACPU::RESET);
 			GBA.cpu.addThreadEvent(GBACPU::START);
+		}
+		
+		ImGui::Separator();
+		if (ImGui::MenuItem("Audio Channels")) {
+			ImGui::MenuItem("Channel 1", NULL, &GBA.apu.ch1OverrideEnable);
+			ImGui::MenuItem("Channel 2", NULL, &GBA.apu.ch2OverrideEnable);
+			ImGui::MenuItem("Channel 3", NULL, &GBA.apu.ch3OverrideEnable);
+			ImGui::MenuItem("Channel 4", NULL, &GBA.apu.ch4OverrideEnable);
+			ImGui::MenuItem("Channel A", NULL, &GBA.apu.chAOverrideEnable);
+			ImGui::MenuItem("Channel B", NULL, &GBA.apu.chBOverrideEnable);
+
+			ImGui::EndMenu();
 		}
 
 		ImGui::EndMenu();

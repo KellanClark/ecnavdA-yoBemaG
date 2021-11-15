@@ -43,7 +43,7 @@ void ARM7TDMI::resetARM7TDMI() {
 	reg.R[12] = 0x00000000;
 	reg.R[13] = 0x03007F00;
 	reg.R[14] = 0x00000000;
-	reg.R[15] = 0x08000000; // Start of ROM
+	reg.R[15] = 0;//0x08000000; // Start of ROM
 
 	reg.CPSR = 0x000000DF;
 
@@ -1176,7 +1176,7 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 	case 0x7: // RSC
 		operationCarry = (u64)operand2 >= ((u64)operand1 + !reg.flagC);
 		result = (u64)operand2 - ((u64)operand1 + !reg.flagC);
-		operationOverflow = ((operand2 ^ operand1) & (operand2 & result)) >> 31;
+		operationOverflow = ((operand2 ^ (operand1 + !reg.flagC)) & (operand2 & result)) >> 31;
 		break;
 	case 0x8: // TST
 		result = operand1 & operand2;
@@ -1308,11 +1308,8 @@ void ARM7TDMI::singleDataSwap(u32 opcode) {
 
 		reg.R[destinationRegister] = result;
 	} else {
-		u32 result = bus.read<u32>(address & ~3);
+		u32 result = bus.read<u32>(address);
 		bus.write<u32>(address & ~3, reg.R[sourceRegister]);
-
-		if (address & 3)
-			result = (result << ((4 - (address & 3)) * 8)) | (result >> ((address & 3) * 8));
 
 		reg.R[destinationRegister] = result;
 	}
@@ -1526,11 +1523,7 @@ void ARM7TDMI::singleDataTransfer(u32 opcode) {
 		if (byteWord) {
 			result = bus.read<u8>(address);
 		} else {
-			result = bus.read<u32>(address & ~3);
-
-			// Rotate misaligned loads
-			if (address & 3)
-				result = (result << ((4 - (address & 3)) * 8)) | (result >> ((address & 3) * 8));
+			result = bus.read<u32>(address);
 		}
 	} else { // STR
 		if (byteWord) {
@@ -1995,11 +1988,8 @@ void ARM7TDMI::thumbLoadStoreRegOffset(u16 opcode) {
 		if (byteWord) { // LDRB
 			reg.R[srcDestRegister] = bus.read<u8>(address);
 		} else { // LDR
-			u32 result = bus.read<u32>(address & ~3);
+			u32 result = bus.read<u32>(address);
 
-			if (address & 3)
-				result = (result << ((4 - (address & 3)) * 8)) | (result >> ((address & 3) * 8));
-			
 			reg.R[srcDestRegister] = result;
 		}
 	} else {
@@ -2053,11 +2043,8 @@ void ARM7TDMI::thumbLoadStoreImmediateOffset(u16 opcode) {
 		if (byteWord) { // LDRB
 			reg.R[srcDestRegister] = bus.read<u8>(address);
 		} else { // LDR
-			u32 result = bus.read<u32>(address & ~3);
+			u32 result = bus.read<u32>(address);
 
-			if (address & 3)
-				result = (result << ((4 - (address & 3)) * 8)) | (result >> ((address & 3) * 8));
-			
 			reg.R[srcDestRegister] = result;
 		}
 	} else {
@@ -2091,12 +2078,7 @@ void ARM7TDMI::thumbSpRelativeLoadStore(u16 opcode) {
 	u32 address = reg.R[13] + ((opcode & 0xFF) << 2);
 
 	if (loadStore) {
-		u32 result = bus.read<u32>(address & ~3);
-
-		if (address & 3)
-			result = (result << ((4 - (address & 3)) * 8)) | (result >> ((address & 3) * 8));
-		
-		reg.R[destinationReg] = result;
+		reg.R[destinationReg] = bus.read<u32>(address);
 	} else {
 		bus.write<u32>(address & ~3, reg.R[destinationReg]);
 	}

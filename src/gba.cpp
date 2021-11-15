@@ -167,13 +167,12 @@ void GameBoyAdvance::save() {
 template <typename T>
 T GameBoyAdvance::read(u32 address) {
 	int page = (address & 0x0FFFFFFF) >> 15;
-	int offset = address & 0x7FFF;
+	int offset = address & 0x7FFF & ~(sizeof(T) - 1);
 	void *pointer = pageTableRead[page];
 
-	T val;
+	T val = 0;
 	if (pointer != NULL) {
 		std::memcpy(&val, (u8*)pointer + offset, sizeof(T));
-		return val;
 	} else {
 		switch (page) {
 		case toPage(0x0000000): // BIOS
@@ -199,6 +198,9 @@ T GameBoyAdvance::read(u32 address) {
 			switch (offset) {
 			case 0x000 ... 0x055: // PPU
 				return ppu.readIO(address);
+			
+			case 0x060 ... 0x0A7: // APU
+				return apu.readIO(address);
 
 			case 0x0B0 ... 0x0DF: // DMA
 				return dma.readIO(address);
@@ -259,7 +261,11 @@ T GameBoyAdvance::read(u32 address) {
 		}
 	}
 
-	return 0;
+	// Rotate misaligned loads
+	if ((sizeof(T) == 4) && (address & 3)) [[unlikely]]
+		val = (val << ((4 - (address & 3)) * 8)) | (val >> ((address & 3) * 8));
+
+	return val;
 }
 template u8 GameBoyAdvance::read<u8>(u32);
 template u16 GameBoyAdvance::read<u16>(u32);
@@ -291,6 +297,10 @@ void GameBoyAdvance::write(u32 address, T value) {
 			switch (offset) {
 			case 0x000 ... 0x055: // PPU
 				ppu.writeIO(address, value);
+				break;
+
+			case 0x060 ... 0x0A7: // APU
+				apu.writeIO(address, value);
 				break;
 
 			case 0x0B0 ... 0x0DF: // DMA
