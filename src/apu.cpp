@@ -2,8 +2,6 @@
 #include "apu.hpp"
 #include "scheduler.hpp"
 #include "gba.hpp"
-#include "types.hpp"
-#include <cstdio>
 
 GBAAPU::GBAAPU(GameBoyAdvance& bus_) : bus(bus_) {
 	sampleRate = 48000;
@@ -141,8 +139,8 @@ void GBAAPU::generateSample() {
 		}
 	}
 
-	float ch1Sample = ch1OverrideEnable * 0;//soundControl.ch1On * channel1.dacOn * (((channel1.currentVolume * squareWaveDutyCycles[channel1.waveDuty][channel1.waveIndex]) / 7.5) - 1.0f);
-	float ch2Sample = ch2OverrideEnable * 0;//soundControl.ch2On * channel2.dacOn * (((channel2.currentVolume * squareWaveDutyCycles[channel2.waveDuty][channel2.waveIndex]) / 7.5) - 1.0f);
+	float ch1Sample = ch1OverrideEnable * soundControl.ch1On * channel1.dacOn * (((channel1.currentVolume * squareWaveDutyCycles[channel1.waveDuty][channel1.waveIndex]) / 7.5) - 1.0f);
+	float ch2Sample = ch2OverrideEnable * soundControl.ch2On * channel2.dacOn * (((channel2.currentVolume * squareWaveDutyCycles[channel2.waveDuty][channel2.waveIndex]) / 7.5) - 1.0f);
 	float ch3Sample = ch3OverrideEnable * 0;
 	float ch4Sample = ch4OverrideEnable * 0;
 	float chASample = chAOverrideEnable * (channelA.currentSample * ((float)(soundControl.chAVolume + 1) / 2));
@@ -200,13 +198,13 @@ u8 GBAAPU::readIO(u32 address) {
 	case 0x4000061:
 		return (u8)(channel1.SOUND1CNT_L >> 8);
 	case 0x4000062:
-		return (u8)channel1.SOUND1CNT_H;
+		return (u8)(channel1.SOUND1CNT_H & 0xC0);
 	case 0x4000063:
 		return (u8)(channel1.SOUND1CNT_H >> 8);
 	case 0x4000064:
-		return (u8)channel1.SOUND1CNT_X;
+		return (u8)(channel1.SOUND1CNT_X & 0);
 	case 0x4000065:
-		return (u8)(channel1.SOUND1CNT_X >> 8);
+		return (u8)((channel1.SOUND1CNT_X >> 8) & 0x40);
 	case 0x4000066:
 		return (u8)(channel1.SOUND1CNT_X >> 16);
 	case 0x4000067:
@@ -248,14 +246,14 @@ u8 GBAAPU::readIO(u32 address) {
 	case 0x400008B:
 		return (u8)(soundControl.SOUNDBIAS >> 24);
 	default:
-		return 0;
+		return bus.openBus<u8>(address);
 	}
 }
 
 void GBAAPU::writeIO(u32 address, u8 value) {
 	switch (address) {
 	case 0x4000060:
-		channel1.SOUND1CNT_L = value;
+		channel1.SOUND1CNT_L = value & 0x7F;
 		break;
 	case 0x4000062:
 		channel1.SOUND1CNT_H = (channel1.SOUND1CNT_H & 0xFF00) | value;
@@ -287,7 +285,7 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 				soundControl.ch1On = true;
 		}
 
-		channel1.SOUND1CNT_X = (channel1.SOUND1CNT_X & 0x00FF) | (value << 8);
+		channel1.SOUND1CNT_X = (channel1.SOUND1CNT_X & 0x00FF) | ((value & 0xC0) << 8);
 		channel1.shadowFrequency = channel1.frequency;
 		break;
 	case 0x4000068:

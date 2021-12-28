@@ -139,7 +139,7 @@ u8 GBATIMER::readIO(u32 address) {
 	case 0x400010E:
 		return TIM3CNT;
 	default:
-		return 0;
+		return bus.openBus<u8>(address);
 	}
 }
 

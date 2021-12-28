@@ -290,6 +290,16 @@ public:
 		};
 		u16 WINOUT; // 0x400004A
 	};
+	union {
+		struct {
+			u32 bgMosH : 4;
+			u32 bgMosV : 4;
+			u32 objMosH : 4;
+			u32 objMosV : 4;
+			u32 : 16;
+		};
+		u32 MOSAIC; // 0x400004C
+	};
 };
 
 #endif

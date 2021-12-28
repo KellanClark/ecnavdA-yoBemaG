@@ -191,6 +191,8 @@ int main(int argc, char *argv[]) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	initPpuDebug();
 
+	NFD::Guard nfdGuard;
+
 	u32 emuThreadTicks = 0;
 	u32 emuThreadTicksLast = 0;
 	SDL_Event event;
@@ -437,9 +439,6 @@ void romInfoWindow() {
 	case GameBoyAdvance::SRAM_32K:
 		saveTypeString = "32 kilobyte SRAM";
 		break;
-	case GameBoyAdvance::FLASH_64K:
-		saveTypeString = "64 kilobyte Flash";
-		break;
 	case GameBoyAdvance::FLASH_128K:
 		saveTypeString = "128 kilobyte Flash";
 		break;
@@ -537,6 +536,8 @@ void systemLogWindow() {
 	ImGui::Begin("System Log", &showSystemLog);
 
 	ImGui::Checkbox("Trace Instructions", (bool *)&GBA.cpu.traceInstructions);
+	ImGui::SameLine();
+	ImGui::Checkbox("Log Flash Commands", (bool *)&GBA.logFlash);
 	ImGui::SameLine();
 	ImGui::Checkbox("Log DMAs", (bool *)&GBA.dma.logDma);
 

@@ -175,8 +175,12 @@ void GBADMA::doDma() {
 		break;
 	}
 
+	int length = control->numTransfers;
+	if (length == 0)
+		length = (channel == 3) ? 0x10000 : 0x4000;
+
 	if (logDma) {
-		bus.log << fmt::format("DMA Channel {} from 0x{:0>7X} to 0x{:0>7X} of length 0x{:0>4X} with control = 0x{:0>4X}\n", channel, *sourceAddress, *destinationAddress, (u16)control->raw, control->raw >> 16);
+		bus.log << fmt::format("DMA Channel {} from 0x{:0>7X} to 0x{:0>7X} of length 0x{:0>4X} with control = 0x{:0>4X}\n", channel, *sourceAddress, *destinationAddress, length, control->raw >> 16);
 		bus.log << "Request Interrupt: " << (control->requestInterrupt ? "True" : "False") << "  Timing: ";
 		switch (control->timing) {
 		case 0: bus.log << "Immediately"; break;
@@ -202,7 +206,7 @@ void GBADMA::doDma() {
 	}
 
 	if (control->transferSize) { // 32 bit
-		for (int i = 0; i < control->numTransfers; i++) {
+		for (int i = 0; i < length; i++) {
 			u32 data = bus.read<u32>(*sourceAddress & ~3);
 			bus.write<u32>(*destinationAddress & ~3, data);
 
@@ -219,7 +223,7 @@ void GBADMA::doDma() {
 			}
 		}
 	} else { // 16 bit
-		for (int i = 0; i < control->numTransfers; i++) {
+		for (int i = 0; i < length; i++) {
 			u16 data = bus.read<u16>(*sourceAddress & ~1);
 			bus.write<u16>(*destinationAddress & ~1, data);
 
@@ -278,7 +282,7 @@ u8 GBADMA::readIO(u32 address) {
 	case 0x40000DF:
 		return (u8)(DMA3CNT.raw >> 24);
 	default:
-		return 0;
+		return bus.openBus<u8>(address);
 	}
 }
 
@@ -296,7 +300,7 @@ void GBADMA::writeIO(u32 address, u8 value) {
 		DMA0SAD = (DMA0SAD & 0xFF00FFFF) | (value << 16);
 		break;
 	case 0x40000B3:
-		DMA0SAD = (DMA0SAD & 0x00FFFFFF) | ((value & 0x0F) << 24);
+		DMA0SAD = (DMA0SAD & 0x00FFFFFF) | ((value & 0x07) << 24);
 		break;
 	case 0x40000B4:
 		DMA0DAD = (DMA0DAD & 0xFFFFFF00) | value;
@@ -314,7 +318,7 @@ void GBADMA::writeIO(u32 address, u8 value) {
 		DMA0CNT.raw = (DMA0CNT.raw & 0xFFFFFF00) | value;
 		break;
 	case 0x40000B9:
-		DMA0CNT.raw = (DMA0CNT.raw & 0xFFFF00FF) | (value << 8);
+		DMA0CNT.raw = (DMA0CNT.raw & 0xFFFF00FF) | ((value & 0x3F) << 8);
 		break;
 	case 0x40000BA:
 		DMA0CNT.raw = (DMA0CNT.raw & 0xFF00FFFF) | (value << 16);
@@ -362,7 +366,7 @@ void GBADMA::writeIO(u32 address, u8 value) {
 		DMA1CNT.raw = (DMA1CNT.raw & 0xFFFFFF00) | value;
 		break;
 	case 0x40000C5:
-		DMA1CNT.raw = (DMA1CNT.raw & 0xFFFF00FF) | (value << 8);
+		DMA1CNT.raw = (DMA1CNT.raw & 0xFFFF00FF) | ((value & 0x3F) << 8);
 		break;
 	case 0x40000C6:
 		DMA1CNT.raw = (DMA1CNT.raw & 0xFF00FFFF) | (value << 16);
@@ -410,7 +414,7 @@ void GBADMA::writeIO(u32 address, u8 value) {
 		DMA2CNT.raw = (DMA2CNT.raw & 0xFFFFFF00) | value;
 		break;
 	case 0x40000D1:
-		DMA2CNT.raw = (DMA2CNT.raw & 0xFFFF00FF) | (value << 8);
+		DMA2CNT.raw = (DMA2CNT.raw & 0xFFFF00FF) | ((value & 0x3F) << 8);
 		break;
 	case 0x40000D2:
 		DMA2CNT.raw = (DMA2CNT.raw & 0xFF00FFFF) | (value << 16);
@@ -429,6 +433,7 @@ void GBADMA::writeIO(u32 address, u8 value) {
 				checkDma();
 			}
 		}
+		printf("0x%04X\n", DMA2CNT.raw >> 16);
 		break;
 	case 0x40000D4:
 		DMA3SAD = (DMA3SAD & 0xFFFFFF00) | value;
@@ -452,7 +457,7 @@ void GBADMA::writeIO(u32 address, u8 value) {
 		DMA3DAD = (DMA3DAD & 0xFF00FFFF) | (value << 16);
 		break;
 	case 0x40000DB:
-		DMA3DAD = (DMA3DAD & 0x00FFFFFF) | ((value & 0x07) << 24);
+		DMA3DAD = (DMA3DAD & 0x00FFFFFF) | ((value & 0x0F) << 24);
 		break;
 	case 0x40000DC:
 		DMA3CNT.raw = (DMA3CNT.raw & 0xFFFFFF00) | value;

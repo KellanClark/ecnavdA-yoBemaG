@@ -46,26 +46,35 @@ public:
 	int loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_);
 	void save();
 
-	template <typename T> T read(u32 address);
+	template <typename T> T openBus(u32 address);
+	template <typename T> u32 read(u32 address);
 	template <typename T> void write(u32 address, T value);
 
 	std::stringstream log;
+	bool logFlash;
 
 	enum {
 		UNKNOWN,
 		EEPROM_512B,
 		EEPROM_8K,
 		SRAM_32K,
-		FLASH_64K,
 		FLASH_128K
 	} saveType;
 	std::filesystem::path saveFilePath;
 	enum {
-		READY,
-		CMD_1,
-		CMD_2
-	} flashState;
+		READY = 1 << 0,
+		CMD_1 = 1 << 1,
+		CMD_2 = 1 << 2,
+		ERASE = 1 << 3,
+		WRITE = 1 << 4,
+		BANK = 1 << 5
+	};
+	int flashState;
+	bool flashChipId;
+	int flashBank;
 
+	u32 biosOpenBusValue;
+	u32 openBusValue;
 	std::vector<u8> biosBuff;
 	u8 ewram[0x40000];
 	u8 iwram[0x8000];

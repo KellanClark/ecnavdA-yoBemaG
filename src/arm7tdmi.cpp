@@ -4,9 +4,6 @@
 #include "scheduler.hpp"
 #include "types.hpp"
 #include <bit>
-#include <cstdio>
-#include <cmath>
-#include <new>
 
 ARM7TDMI::ARM7TDMI(GameBoyAdvance& bus_) : bus(bus_) {
 	disassemblerOptions.showALCondition = false;
@@ -1166,17 +1163,17 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 	case 0x5: // ADC
 		operationCarry = ((u64)operand1 + (u64)operand2 + reg.flagC) >> 32;
 		result = operand1 + operand2 + reg.flagC;
-		operationOverflow = (~(operand1 ^ (operand2 + reg.flagC)) & ((operand1 ^ result)) & 0x80000000) > 0;
+		operationOverflow = (~(operand1 ^ operand2) & ((operand1 ^ result))) >> 31;
 		break;
 	case 0x6: // SBC
 		operationCarry = (u64)operand1 >= ((u64)operand2 + !reg.flagC);
 		result = (u64)operand1 - ((u64)operand2 + !reg.flagC);
-		operationOverflow = ((operand1 ^ (operand2 + !reg.flagC)) & (operand1 ^ result)) >> 31;
+		operationOverflow = ((operand1 ^ operand2) & (operand1 ^ result)) >> 31;
 		break;
 	case 0x7: // RSC
 		operationCarry = (u64)operand2 >= ((u64)operand1 + !reg.flagC);
 		result = (u64)operand2 - ((u64)operand1 + !reg.flagC);
-		operationOverflow = ((operand2 ^ (operand1 + !reg.flagC)) & (operand2 & result)) >> 31;
+		operationOverflow = ((operand2 ^ operand1) & (operand2 ^ result)) >> 31;
 		break;
 	case 0x8: // TST
 		result = operand1 & operand2;
@@ -1448,19 +1445,19 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 	if (loadStore) {
 		switch (shBits) {
 		case 1: // LDRH
-			result = bus.read<u16>(address & ~1);
-
-			if (address & 1)
-				result = (result >> 8) | (result << 24);
+			result = bus.read<u16>(address);
 			break;
 		case 2: // LDRSB
 			result = ((i32)((u32)bus.read<u8>(address) << 24) >> 24);
 			break;
 		case 3: // LDRSH
-			result = ((i32)((u32)bus.read<u16>(address & ~1) << 16) >> 16);
+			result = bus.read<u16>(address);
 
-			if (address & 1)
-				result = (i32)result >> 8;
+			if (address & 1) {
+				result = (i32)(result << 24) >> 24;
+			} else {
+				result = (i32)(result << 16) >> 16;
+			}
 			break;
 		default:
 			unknownOpcodeArm(opcode, "SH Bits");
@@ -1839,7 +1836,7 @@ void ARM7TDMI::thumbAluReg(u16 opcode) {
 				result = 0;
 				break;
 			}
-			reg.flagC = (operand1 & (1 << (31 - (operand2 - 1)))) >> 31;
+			reg.flagC = (operand1 & (1 << (31 - (operand2 - 1)))) > 0;
 			result = operand1 << operand2;
 		}
 		break;
@@ -1876,12 +1873,12 @@ void ARM7TDMI::thumbAluReg(u16 opcode) {
 	case 0x5: // ADC
 		result = operand1 + operand2 + reg.flagC;
 		reg.flagC = ((u64)operand1 + (u64)operand2 + reg.flagC) >> 32;
-		reg.flagV = (~(operand1 ^ (operand2 + reg.flagC)) & ((operand1 ^ result)) & 0x80000000) > 0;
+		reg.flagV = (~(operand1 ^ operand2) & ((operand1 ^ result))) >> 31;
 		break;
 	case 0x6: // SBC
 		result = (u64)operand1 - ((u64)operand2 + !reg.flagC);
 		reg.flagC = (u64)operand1 >= ((u64)operand2 + !reg.flagC);
-		reg.flagV = ((operand1 ^ (operand2 + !reg.flagC)) & (operand1 ^ result)) >> 31;
+		reg.flagV = ((operand1 ^ operand2) & (operand1 ^ result)) >> 31;
 		break;
 	case 0x7: // ROR
 		if (operand2 == 0) {
@@ -1920,7 +1917,6 @@ void ARM7TDMI::thumbAluReg(u16 opcode) {
 		break;
 	case 0xD: // MUL
 		result = operand1 * operand2;
-		reg.flagC = 0;
 		break;
 	case 0xE: // BIC
 		result = operand1 & (~operand2);
@@ -2016,17 +2012,16 @@ void ARM7TDMI::thumbLoadStoreSext(u16 opcode) {
 		result = (i32)(result << 24) >> 24;
 		break;
 	case 2: // LDRH
-		result = bus.read<u16>(address & ~1);
-
-		if (address & 1)
-			result = (result >> 8) | (result << 24);
+		result = bus.read<u16>(address);
 		break;
 	case 3: // LDSH
-		result = bus.read<u16>(address & ~1);
-		result = (i32)(result << 16) >> 16;
+		result = bus.read<u16>(address);
 
-		if (address & 1)
-			result = (i32)result >> 8;
+		if (address & 1) {
+			result = (i32)(result << 24) >> 24;
+		} else {
+			result = (i32)(result << 16) >> 16;
+		}
 		break;
 	}
 
@@ -2062,10 +2057,7 @@ void ARM7TDMI::thumbLoadStoreHalfword(u16 opcode) {
 	u32 address = reg.R[(opcode >> 3) & 7] + (offset << 1);
 
 	if (loadStore) { // LDRH
-		u32 result = bus.read<u16>(address & ~1);
-
-		if (address & 1)
-			result = (result >> 8) | (result << 24);
+		u32 result = bus.read<u16>(address);
 
 		reg.R[srcDestRegister] = result;
 	} else { // STRH

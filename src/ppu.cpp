@@ -13,9 +13,11 @@ GBAPPU::GBAPPU(GameBoyAdvance& bus_) : bus(bus_) {
 }
 
 void GBAPPU::reset() {
-	// Clear screen and memory
+	// Clear screen
 	memset(framebuffer, 0, sizeof(framebuffer));
 	updateScreen = true;
+
+	// Clear memory
 	memset(paletteRam, 0, sizeof(paletteRam));
 	memset(vram, 0, sizeof(vram));
 	memset(oam, 0, sizeof(oam));
@@ -35,6 +37,7 @@ void GBAPPU::reset() {
 	BG3PA = BG3PB = BG3PC = BG3PD = BG3X = BG3Y = 0;
 	WIN0H = WIN1H = WIN0V = WIN1V = 0;
 	WININ = WINOUT = 0;
+	MOSAIC = 0;
 
 	systemEvents.addEvent(1232, lineStartEvent, this);
 	systemEvents.addEvent(960, hBlankEvent, this);
@@ -129,7 +132,8 @@ void GBAPPU::drawObjects() {
 
 				unsigned int x = obj->objX;
 				u8 y = currentScanline - obj->objY;
-				int yMod = obj->verticalFlip ? (7 - (y % 8)) : (y % 8);
+				u8 mosY = (obj->mosaic ? (currentScanline - (currentScanline % (objMosV + 1))) : currentScanline) - obj->objY;
+				int yMod = obj->verticalFlip ? (7 - (mosY % 8)) : (mosY % 8);
 
 				float affX = 0;
 				float affY = 0;
@@ -157,12 +161,14 @@ void GBAPPU::drawObjects() {
 				for (int relX = 0; relX < (xSize << (obj->objMode == 3)); relX++) {
 					if (x < 240) {
 						if ((obj->objMode == 1) || (obj->objMode == 3)) {
-							//if (((unsigned int)affX < (unsigned int)xSize) && ((unsigned int)affY < (unsigned int)ySize))
-							if ((affX >= 0) && (affX < xSize) && (affY >= 0) && (affY < ySize)) {
-								tileDataAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((int)affY / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((int)affX / 8)) * (32 << obj->bpp)) + (((unsigned int)affY & 7) * (4 << obj->bpp)) + (((unsigned int)affX & 7) / (2 >> obj->bpp));
+							int mosX = obj->mosaic ? ((int)affX - ((int)affX % (objMosH + 1))) : (int)affX;
+							mosY = obj->mosaic ? ((int)affY - ((int)affY % (objMosV + 1))) : (int)affY;
+							//if (((unsigned int)affX < (unsigned int)xSize) && ((unsigned int)affY < (unsigned int)ySize)) {
+							if ((mosX >= 0) && (mosX < xSize) && (mosY >= 0) && (mosY < ySize)) {
+								tileDataAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((int)mosY / 8) * (objMappingDimension ? (xSize / 8) : (32 >> obj->bpp))) + ((int)mosX / 8)) * (32 << obj->bpp)) + (((unsigned int)mosY & 7) * (4 << obj->bpp)) + (((unsigned int)mosX & 7) / (2 >> obj->bpp));
 
 								tileData = vram[tileDataAddress];
-								if ((int)affX & 1) {
+								if (mosX & 1) {
 									tileData >>= 4;
 								} else {
 									tileData &= 0xF;
@@ -171,13 +177,12 @@ void GBAPPU::drawObjects() {
 								tileData = 0;
 							}
 						} else {
-							if (((relX % 8) == 0) || (x == 0)) { // Fetch new tile
-								tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - y) : y) / 8) * (objMappingDimension ? (xSize / 8) : 32)) + ((obj->horizontolFlip ? (xSize - 1 - relX) : relX) / 8)) * (32 << obj->bpp)) + (yMod * (4 << obj->bpp));
-							}
+							int mosX = obj->mosaic ? ((x - (x % (objMosH + 1))) - obj->objX) : relX;
+							tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - mosY) : mosY) / 8) * (objMappingDimension ? (xSize / 8) : (32 >> obj->bpp))) + ((obj->horizontolFlip ? (xSize - 1 - mosX) : mosX) / 8)) * (32 << obj->bpp)) + (yMod * (4 << obj->bpp));
 							if (((tileRowAddress <= 0x14000) && (bgMode >= 3)) || (tileRowAddress >= 0x18000))
 								break;
 
-							int xMod = obj->horizontolFlip ? (7 - (relX % 8)) : (relX % 8);
+							int xMod = obj->horizontolFlip ? (7 - (mosX % 8)) : (mosX % 8);
 							if (obj->bpp) { // 8 bits per pixel
 								tileData = vram[tileRowAddress + xMod];
 							} else { // 4 bits per pixel
@@ -231,18 +236,15 @@ int GBAPPU::calculateTilemapIndex(int x, int y) {
 	case 3: baseBlock = bg3ScreenBaseBlock; break;
 	}
 
-	int offset;
 	switch (size) {
 	case 0: // 256x256
 		return (baseBlock * 0x800) + (((y % 256) / 8) * 64) + (((x % 256) / 8) * 2);
 	case 1: // 512x256
-		offset = (baseBlock + ((x >> 8) & 1)) * 0x800;
-		return offset + (((y % 256) / 8) * 64) + (((x % 256) / 8) * 2);
+		return ((baseBlock + ((x >> 8) & 1)) * 0x800) + (((y % 256) / 8) * 64) + (((x % 256) / 8) * 2);
 	case 2: // 256x512
 		return (baseBlock * 0x800) + (((y % 512) / 8) * 64) + (((x % 256) / 8) * 2);
 	case 3: // 512x512
-		offset = ((baseBlock + ((x >> 8) & 1)) * 0x800) + (16 * (y & 0x100));
-		return offset + (((y % 256) / 8) * 64) + (((x % 256) / 8) * 2);
+		return ((baseBlock + ((x >> 8) & 1)) * 0x800) + (16 * (y & 0x100)) + (((y % 256) / 8) * 64) + (((x % 256) / 8) * 2);
 	}
 }
 constexpr std::array<int (GBAPPU::*)(int, int), 16> tilemapIndexLUT = {
@@ -271,6 +273,7 @@ void GBAPPU::drawBg() {
 	int screenSize;
 	bool bpp;
 	int characterBaseBlock;
+	bool mosaic;
 	switch (bgNum) {
 	case 0:
 		xOffset = BG0HOFS;
@@ -278,6 +281,7 @@ void GBAPPU::drawBg() {
 		screenSize = bg0ScreenSize;
 		bpp = bg0Bpp;
 		characterBaseBlock = bg0CharacterBaseBlock;
+		mosaic = bg0Mosaic;
 		break;
 	case 1:
 		xOffset = BG1HOFS;
@@ -285,6 +289,7 @@ void GBAPPU::drawBg() {
 		screenSize = bg1ScreenSize;
 		bpp = bg1Bpp;
 		characterBaseBlock = bg1CharacterBaseBlock;
+		mosaic = bg1Mosaic;
 		break;
 	case 2:
 		xOffset = BG2HOFS;
@@ -292,6 +297,7 @@ void GBAPPU::drawBg() {
 		screenSize = bg2ScreenSize;
 		bpp = bg2Bpp;
 		characterBaseBlock = bg2CharacterBaseBlock;
+		mosaic = bg2Mosaic;
 		break;
 	case 3:
 		xOffset = BG3HOFS;
@@ -299,6 +305,7 @@ void GBAPPU::drawBg() {
 		screenSize = bg3ScreenSize;
 		bpp = bg3Bpp;
 		characterBaseBlock = bg3CharacterBaseBlock;
+		mosaic = bg3Mosaic;
 		break;
 	}
 
@@ -309,12 +316,17 @@ void GBAPPU::drawBg() {
 	int tileRowAddress = 0;
 
 	int x = xOffset;
+	int mosX;
 	int y = currentScanline + yOffset;
+	if (mosaic)
+		y -= y % (bgMosV + 1);
 
 	bool win0HorzFits = win0Right < win0Left;
 	bool win1HorzFits = win1Right < win1Left;
 
 	for (int i = 0; i < 240; i++) {
+		mosX = mosaic ? (x - (x % (bgMosH + 1))) : x;
+
 		if (win0Left == i)
 			win0HorzFits = true;
 		if (win0Right == i)
@@ -324,8 +336,8 @@ void GBAPPU::drawBg() {
 		if (win1Right == i)
 			win1HorzFits = false;
 
-		if (((x % 8) == 0) || (i == 0)) { // Fetch new tile
-			int tilemapIndex = (this->*tilemapIndexLUT[(bgNum * 4) + screenSize])(x, y);
+		{
+			int tilemapIndex = (this->*tilemapIndexLUT[(bgNum * 4) + screenSize])(mosX, y);
 
 			u16 tilemapEntry = (vram[tilemapIndex + 1] << 8) | vram[tilemapIndex];
 			paletteBank = (tilemapEntry >> 8) & 0xF0;
@@ -340,7 +352,7 @@ void GBAPPU::drawBg() {
 			break;
 
 		u8 tileData;
-		int xMod = horizontolFlip ? (7 - (x % 8)) : (x % 8);
+		int xMod = horizontolFlip ? (7 - (mosX % 8)) : (mosX % 8);
 		if (bpp) { // 8 bits per pixel
 			tileData = vram[tileRowAddress + xMod];
 		} else { // 4 bits per pixel
@@ -379,6 +391,7 @@ void GBAPPU::drawBgAff() {
 	int screenBaseBlock;
 	bool wrapping;
 	int screenSize;
+	bool mosaic;
 	float affX;
 	float affY;
 	float pa;
@@ -388,6 +401,7 @@ void GBAPPU::drawBgAff() {
 		screenBaseBlock = bg2ScreenBaseBlock;
 		wrapping = bg2Wrapping;
 		screenSize = 128 << bg2ScreenSize;
+		mosaic = bg0Mosaic;
 		affX = internalBG2X;
 		affY = internalBG2Y;
 		pa = (float)((i16)BG2PA) / 256;
@@ -397,6 +411,7 @@ void GBAPPU::drawBgAff() {
 		screenBaseBlock = bg3ScreenBaseBlock;
 		wrapping = bg3Wrapping;
 		screenSize = 128 << bg3ScreenSize;
+		mosaic = bg0Mosaic;
 		affX = internalBG3X;
 		affY = internalBG3Y;
 		pa = (float)((i16)BG3PA) / 256;
@@ -416,14 +431,17 @@ void GBAPPU::drawBgAff() {
 		if (win1Right == i)
 			win1HorzFits = false;
 
-		int tilemapIndex = (screenBaseBlock * 0x800) + ((((int)affY & (screenSize - 1)) / 8) * (screenSize / 8)) + (((int)affX & (screenSize - 1)) / 8);
+		int mosX = mosaic ? ((int)affX - ((int)affX % (bgMosH + 1))) : (int)affX;
+		int mosY = mosaic ? ((int)affY - ((int)affY % (bgMosV + 1))) : (int)affY;
 
-		int tileAddress = (characterBaseBlock * 0x4000) + (vram[tilemapIndex] * 64) + (((int)affY & 7) * 8) + ((int)affX & 7);
+		int tilemapIndex = (screenBaseBlock * 0x800) + (((mosY & (screenSize - 1)) / 8) * (screenSize / 8)) + ((mosX & (screenSize - 1)) / 8);
+
+		int tileAddress = (characterBaseBlock * 0x4000) + (vram[tilemapIndex] * 64) + ((mosY & 7) * 8) + (mosX & 7);
 		if (tileAddress >= 0x10000)
 			break;
 
 		u8 tileData = vram[tileAddress];
-		if (!wrapping && (((unsigned int)affY >= (unsigned int)screenSize) || ((unsigned int)affX >= (unsigned int)screenSize))) {
+		if (!wrapping && (((unsigned)mosY >= (unsigned int)screenSize) || ((unsigned)mosX >= (unsigned int)screenSize))) {
 			tileData = 0;
 		}
 
@@ -686,7 +704,7 @@ u8 GBAPPU::readIO(u32 address) {
 	case 0x400004B:
 		return (u8)(WINOUT >> 8);
 	default:
-		return 0;
+		return bus.openBus<u8>(address);
 	}
 }
 
@@ -923,6 +941,12 @@ void GBAPPU::writeIO(u32 address, u8 value) {
 		break;
 	case 0x400004B:
 		WINOUT = (WINOUT & 0x003F) | ((value & 0x3F) << 8);
+		break;
+	case 0x400004C:
+		MOSAIC = (MOSAIC & 0xFF00) | value;
+		break;
+	case 0x400004D:
+		MOSAIC = (MOSAIC & 0x00FF) | (value << 8);
 		break;
 	}
 }

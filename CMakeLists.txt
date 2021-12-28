@@ -48,13 +48,13 @@ target_compile_options(ecnavda-yobemag PRIVATE
 	-MMD
 	-MP
 	-Wall
-#[[	-fsanitize=address
-	-fsanitize=leak
-	-fsanitize=pointer-compare
-	-fsanitize=pointer-subtract
-	-fsanitize=undefined
-	-fstack-protector-all
-	#-fsanitize=thread]]
+	#-fsanitize=address
+	#-fsanitize=leak
+	#-fsanitize=pointer-compare
+	#-fsanitize=pointer-subtract
+	#-fstack-protector-all
+	#-fsanitize=undefined
+	#-fsanitize=thread
 )
 
 target_link_libraries(ecnavda-yobemag PRIVATE
@@ -67,13 +67,13 @@ target_link_libraries(ecnavda-yobemag PRIVATE
 	-lGL
 	-lm
 	-lpthread
-#[[	-fsanitize=address
-	-fsanitize=leak
-	-fsanitize=undefined
-	-fsanitize=pointer-compare
-	-fsanitize=pointer-subtract
-	-fstack-protector-all
-	#-fsanitize=thread]]
+	#-fsanitize=address
+	#-fsanitize=leak
+	#-fsanitize=pointer-compare
+	#-fsanitize=pointer-subtract
+	#-fstack-protector-all
+	#-fsanitize=undefined
+	#-fsanitize=thread
 )
 
 set(CMAKE_CXX_FLAGS_DEBUG "-g -Og")
