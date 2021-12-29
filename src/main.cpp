@@ -1,4 +1,7 @@
 
+#include <list>
+#include <numeric>
+
 #include "SDL_audio.h"
 #include "imgui.h"
 #include "backends/imgui_impl_sdl.h"
@@ -195,6 +198,9 @@ int main(int argc, char *argv[]) {
 
 	u32 emuThreadTicks = 0;
 	u32 emuThreadTicksLast = 0;
+	std::list<u32> emuThreadTicksBuff;
+	emuThreadTicksBuff.resize(60 * 5);
+	u32 emuThreadTicksBuffTotal = 0;
 	SDL_Event event;
 	while (!quit) {
 		while (SDL_PollEvent(&event)) {
@@ -237,8 +243,14 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (GBA.ppu.updateScreen) {
+			// Update FPS count
 			emuThreadTicksLast = emuThreadTicks;
 			emuThreadTicks = SDL_GetTicks();
+			emuThreadTicksBuffTotal -= emuThreadTicksBuff.back();
+			emuThreadTicksBuff.pop_back();
+			emuThreadTicksBuff.push_front(emuThreadTicks - emuThreadTicksLast);
+			emuThreadTicksBuffTotal += emuThreadTicksBuff.front();
+
 			glBindTexture(GL_TEXTURE_2D, lcdTexture);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB5_A1, 240, 160, 0, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, GBA.ppu.framebuffer);
 			GBA.ppu.updateScreen = false;
@@ -275,7 +287,7 @@ int main(int argc, char *argv[]) {
 			ImGui::Begin("Game Boy Advance Screen");
 
 			ImGui::Text("Rendering Thread:  %.1f FPS", io.Framerate);
-			ImGui::Text("Emulator Thread:   %.1f FPS", 1000.0/(emuThreadTicks - emuThreadTicksLast));
+			ImGui::Text("Emulator Thread:   %.1f FPS", 1000.0/((float)emuThreadTicksBuffTotal / emuThreadTicksBuff.size()));
 			ImGui::Image((void*)(intptr_t)lcdTexture, ImVec2(240 * 3, 160 * 3));
 
 			ImGui::End();
