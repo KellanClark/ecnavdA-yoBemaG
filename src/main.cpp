@@ -612,7 +612,7 @@ void memEditorWindow() {
 	ImGui::Begin("Memory Editor", &showMemEditor);
 
 	// I *may* have straight coppied these from GBATEK
-	if (ImGui::BeginCombo("", "Jump to Memory Range")) {
+	if (ImGui::BeginCombo("test", "Jump to Memory Range")) {
 		if (ImGui::MenuItem("BIOS - System ROM (0x0000000-0x0003FFF)"))
 			memEditor.GotoAddrAndHighlight(0x0000000, 0x0000000);
 		if (ImGui::MenuItem("WRAM - On-board Work RAM (0x2000000-0x203FFFF)"))

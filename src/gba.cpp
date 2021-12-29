@@ -127,8 +127,8 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	saveFileStream.seekg(0, std::ios::beg);
 
 	// Get save type/size
-	saveType = SRAM_32K;
-	sram.resize(32 * 1024);
+	//saveType = SRAM_32K;
+	//sram.resize(32 * 1024);
 	saveType = FLASH_128K;
 	sram.resize(128 * 1024);
 	char eeprom8KStr[] = "EEPROM_V";

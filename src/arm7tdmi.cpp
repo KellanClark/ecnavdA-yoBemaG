@@ -107,7 +107,7 @@ void ARM7TDMI::cycle() {
 		pipelineOpcode1 = bus.read<u32>(reg.R[15]);
 	}
 
-	//if (reg.R[15] == (0x8008ED0 + 4))
+	//if (reg.R[15] == (0x8000180 + 4))
 	//	unknownOpcodeArm(pipelineOpcode3, "BKPT");
 }
 
