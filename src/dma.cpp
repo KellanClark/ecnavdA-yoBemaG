@@ -179,6 +179,9 @@ void GBADMA::doDma() {
 	if (length == 0)
 		length = (channel == 3) ? 0x10000 : 0x4000;
 
+	if ((control->srcControl == 1) && (*sourceAddress >= 0x8000000) && (*sourceAddress < 0xE000000))
+		control->srcControl = 0;
+
 	if (logDma) {
 		bus.log << fmt::format("DMA Channel {} from 0x{:0>7X} to 0x{:0>7X} of length 0x{:0>4X} with control = 0x{:0>4X}\n", channel, *sourceAddress, *destinationAddress, length, control->raw >> 16);
 		bus.log << "Request Interrupt: " << (control->requestInterrupt ? "True" : "False") << "  Timing: ";
