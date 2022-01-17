@@ -114,9 +114,11 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	}
 
 	// Fill page table for rom buffer
-	for (int pageIndex = 0; pageIndex < 0x400; pageIndex++) {
+	for (int pageIndex = 0; pageIndex < toPage(0x2000000); pageIndex++) {
 		u8 *ptr = &romBuff[pageIndex << 15];
-		pageTableRead[pageIndex | 0x1000] = ptr; // 0x0800'0000 - 0x09FF'FFFF
+		pageTableRead[pageIndex | toPage(0x8000000)] = ptr; // 0x0800'0000 - 0x09FF'FFFF
+		pageTableRead[pageIndex | toPage(0xA000000)] = ptr; // 0x0A00'0000 - 0x0BFF'FFFF
+		pageTableRead[pageIndex | toPage(0xC000000)] = ptr; // 0x0C00'0000 - 0x0DFF'FFFF
 	}
 
 	// Open save file
@@ -401,8 +403,8 @@ void GameBoyAdvance::write(u32 address, T value) {
 				break;
 			case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
 				if (sizeof(T) == 1) {
-					std::memcpy(&ppu.paletteRam[0] + (offset & 0x3FE), &value, sizeof(T));
-					std::memcpy(&ppu.paletteRam[0] + ((offset & 0x3FE) | 1), &value, sizeof(T));
+					ppu.paletteRam[offset & 0x3FE] = value;
+					ppu.paletteRam[(offset & 0x3FE) | 1] = value;
 				} else {
 					std::memcpy(&ppu.paletteRam[0] + (offset & 0x3FF), &value, sizeof(T));
 				}
@@ -419,7 +421,6 @@ void GameBoyAdvance::write(u32 address, T value) {
 				if (saveType == SRAM_32K) {
 					sram[address & 0x7FFF] = (u8)value;
 				} else if (saveType == FLASH_128K) {
-					//log << fmt::format("0x{:0>5X} 0x{:0>2X}  0x{:0>7X}  0x{:0>2X}\n", flashBank, flashState, address, value);
 					value = (u8)value;
 					offset = address & 0xFFFF;
 

@@ -1,4 +1,5 @@
 
+#include <cstdio>
 #include <list>
 #include <numeric>
 
@@ -77,12 +78,12 @@ u16 lastJoypad;
 bool syncToAudio;
 SDL_AudioSpec desiredAudioSpec, audioSpec;
 SDL_AudioDeviceID audioDevice;
-std::vector<i32> wavFileData;
+std::vector<i16> wavFileData;
 std::ofstream wavFileStream;
 void audioCallback(void *userdata, uint8_t *stream, int len);
 
 // Everything else
-bool quit = false;
+std::atomic<bool> quit = false;
 int loadRom();
 
 int main(int argc, char *argv[]) {
@@ -159,7 +160,7 @@ int main(int argc, char *argv[]) {
 
 	// Setup Audio
 	desiredAudioSpec = {
-		.freq = 48000,
+		.freq = 32768,
 		.format = AUDIO_S16,
 		.channels = 2,
 		.samples = 1024,
@@ -168,7 +169,6 @@ int main(int argc, char *argv[]) {
 	};
 	audioDevice = SDL_OpenAudioDevice(NULL, 0, &desiredAudioSpec, &audioSpec, 0);
 	SDL_PauseAudioDevice(audioDevice, 0);
-	GBA.apu.sampleRate = audioSpec.freq;
 
 	// Setup ImGui
 	IMGUI_CHECKVERSION();
@@ -316,9 +316,9 @@ int main(int argc, char *argv[]) {
 			unsigned short audioFormat = 1;
 			unsigned short numChannels = 2;
 			unsigned int sampleRate = audioSpec.freq;
-			unsigned int byteRate = audioSpec.freq * sizeof(int16_t) * 2;
+			unsigned int byteRate = audioSpec.freq * sizeof(i16) * 2;
 			unsigned short blockAlign = 4;
-			unsigned short bitsPerSample = sizeof(int16_t) * 8;
+			unsigned short bitsPerSample = sizeof(i16) * 8;
 			char dataStr[4] = {'d', 'a', 't', 'a'};
 			unsigned int subchunk2Size = 0;
 		} wavHeaderData;
@@ -345,13 +345,15 @@ int main(int argc, char *argv[]) {
 }
 
 void audioCallback(void *userdata, uint8_t *stream, int len) {
-	while ((GBA.apu.sampleBufferIndex * sizeof(i16)) < len) {
+	printf("test\n");
+	while ((GBA.apu.sampleBufferIndex * 2) < len) {
 		if (quit)
 			return;
 	}
 
-	if (recordSound)
+	if (recordSound) {
 		wavFileData.insert(wavFileData.end(), GBA.apu.sampleBuffer.begin(), GBA.apu.sampleBuffer.begin() + GBA.apu.sampleBufferIndex);
+	}
 	GBA.apu.sampleBufferIndex = 0;
 
 	memcpy(stream, &GBA.apu.sampleBuffer, len);
@@ -623,8 +625,8 @@ void memEditorWindow() {
 	ImGui::SetNextWindowSize(ImVec2(570, 400), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Memory Editor", &showMemEditor);
 
-	// I *may* have straight coppied these from GBATEK
-	if (ImGui::BeginCombo("test", "Jump to Memory Range")) {
+	// I *may* have straight coppied this text from GBATEK
+	if (ImGui::BeginCombo("Location", "Jump to Memory Range")) {
 		if (ImGui::MenuItem("BIOS - System ROM (0x0000000-0x0003FFF)"))
 			memEditor.GotoAddrAndHighlight(0x0000000, 0x0000000);
 		if (ImGui::MenuItem("WRAM - On-board Work RAM (0x2000000-0x203FFFF)"))

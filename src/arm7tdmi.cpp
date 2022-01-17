@@ -1561,8 +1561,8 @@ void ARM7TDMI::undefined(u32 opcode) {
 template <bool prePostIndex, bool upDown, bool sBit, bool writeBack, bool loadStore>
 void ARM7TDMI::blockDataTransfer(u32 opcode) {
 	u32 baseRegister = (opcode >> 16) & 0xF;
-	if (baseRegister == 15)
-		unknownOpcodeArm(opcode, "LDM/STM r15 as base");
+	//if (baseRegister == 15)
+	//	unknownOpcodeArm(opcode, "LDM/STM r15 as base");
 
 	u32 address = reg.R[baseRegister];
 	u32 writeBackAddress;
@@ -1643,6 +1643,12 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 
 			reg.R[15] &= reg.thumbMode ? ~1 : ~3;
 		}
+	}
+
+	if ((baseRegister == 15) && loadStore && writeBack) {
+		pipelineStage = 1;
+		incrementR15 = false;
+		reg.R[15] &= reg.thumbMode ? ~1 : ~3;
 	}
 }
 

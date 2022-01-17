@@ -4,6 +4,8 @@
 
 #include "types.hpp"
 #include <array>
+#include <queue>
+#include <atomic>
 
 class GameBoyAdvance;
 class GBAAPU {
@@ -25,8 +27,7 @@ public:
     u8 readIO(u32 address);
 	void writeIO(u32 address, u8 value);
 
-	int sampleRate;
-	int sampleBufferIndex;
+	std::atomic<int> sampleBufferIndex;
 	std::array<i16, 2048> sampleBuffer;
 
 	bool ch1OverrideEnable;
@@ -59,13 +60,12 @@ public:
 		};
 		union {
 			struct {
-				u32 frequency : 11;
-				u32 : 3;
-				u32 consecutiveSelection : 1;
-				u32 initial : 1;
-				u32 : 16;
+				u16 frequency : 11;
+				u16 : 3;
+				u16 consecutiveSelection : 1;
+				u16 initial : 1;
 			};
-			u32 SOUND1CNT_X; // 0x4000064
+			u16 SOUND1CNT_X; // 0x4000064
 		};
 		bool dacOn;
 		int frequencyTimer;
@@ -90,13 +90,12 @@ public:
 		};
 		union {
 			struct {
-				u32 frequency : 11;
-				u32 : 3;
-				u32 consecutiveSelection : 1;
-				u32 initial : 1;
-				u32 : 16;
+				u16 frequency : 11;
+				u16 : 3;
+				u16 consecutiveSelection : 1;
+				u16 initial : 1;
 			};
-			u32 SOUND2CNT_H; // 0x400006C
+			u16 SOUND2CNT_H; // 0x400006C
 		};
 		bool dacOn;
 		int frequencyTimer;
@@ -108,18 +107,18 @@ public:
 	struct {
 		union {
 			struct {
-				u16 out1Volume: 3;
+				u16 outRVolume: 3;
 				u16 : 1;
-				u16 out2Volume : 3;
+				u16 outLVolume : 3;
 				u16 : 1;
-				u16 ch1out1 : 1;
-				u16 ch2out1 : 1;
-				u16 ch3out1 : 1;
-				u16 ch4out1 : 1;
-				u16 ch1out2 : 1;
-				u16 ch2out2 : 1;
-				u16 ch3out2 : 1;
-				u16 ch4out2 : 1;
+				u16 ch1outR : 1;
+				u16 ch2outR : 1;
+				u16 ch3outR : 1;
+				u16 ch4outR : 1;
+				u16 ch1outL : 1;
+				u16 ch2outL : 1;
+				u16 ch3outL : 1;
+				u16 ch4outL : 1;
 			};
 			u16 SOUNDCNT_L; // 0x4000080
 		};
@@ -129,12 +128,12 @@ public:
 				u16 chAVolume : 1;
 				u16 chBVolume : 1;
 				u16 : 4;
-				u16 chAout1 : 1;
-				u16 chAout2 : 1;
+				u16 chAoutR : 1;
+				u16 chAoutL : 1;
 				u16 chATimer : 1;
 				u16 chAReset : 1;
-				u16 chBout1 : 1;
-				u16 chBout2 : 1;
+				u16 chBoutR : 1;
+				u16 chBoutL : 1;
 				u16 chBTimer : 1;
 				u16 chBReset : 1;
 			};
@@ -142,39 +141,34 @@ public:
 		};
 		union {
 			struct {
-				u32 ch1On : 1;
-				u32 ch2On : 1;
-				u32 ch3On : 1;
-				u32 ch4On : 1;
-				u32 : 3;
-				u32 allOn : 1;
-				u32 : 24;
+				u16 ch1On : 1;
+				u16 ch2On : 1;
+				u16 ch3On : 1;
+				u16 ch4On : 1;
+				u16 : 3;
+				u16 allOn : 1;
+				u16 : 8;
 			};
-			u32 SOUNDCNT_X; // 0x4000084
+			u16 SOUNDCNT_X; // 0x4000084
 		};
 		union {
 			struct {
-				u32 : 1;
-				u32 biasLevel : 9;
-				u32 : 4;
-				u32 soundResolution : 2;
-				u32 : 16;
+				u16 : 1;
+				u16 biasLevel : 9;
+				u16 : 4;
+				u16 soundResolution : 2;
 			};
-			u32 SOUNDBIAS; // 0x4000088
+			u16 SOUNDBIAS; // 0x4000088
 		};
-		float volumeFloat1;
-		float volumeFloat2;
+		float volumeFloatR;
+		float volumeFloatL;
 	} soundControl;
 	struct {
-		u32 FIFO_A; // 0x40000A0
-		u32 FIFO_AL;
-		int samplesInFifo;
+		std::queue<i8> fifo; // 0x40000A0
 		float currentSample;
 	} channelA;
 	struct {
-		u64 FIFO_B; // 0x40000A4
-		u64 FIFO_BL;
-		int samplesInFifo;
+		std::queue<i8> fifo; // 0x40000A4
 		float currentSample;
 	} channelB;
 };

@@ -2,10 +2,9 @@
 #include "apu.hpp"
 #include "scheduler.hpp"
 #include "gba.hpp"
+#include <cstdio>
 
 GBAAPU::GBAAPU(GameBoyAdvance& bus_) : bus(bus_) {
-	sampleRate = 48000;
-
 	ch1OverrideEnable = ch2OverrideEnable = ch3OverrideEnable = ch4OverrideEnable = chAOverrideEnable = chBOverrideEnable = true;
 
 	reset();
@@ -14,15 +13,12 @@ GBAAPU::GBAAPU(GameBoyAdvance& bus_) : bus(bus_) {
 void GBAAPU::reset() {
 	frameSequencerCounter = 0;
 
-	channelA.FIFO_A = channelA.FIFO_AL = 0;
-	channelA.samplesInFifo = 0;
-	channelA.currentSample = 0;
-	channelB.FIFO_B = channelB.FIFO_BL = 0;
-	channelB.samplesInFifo = 0;
+	channelA.fifo = {};
+	channelB.fifo = {};
 	channelB.currentSample = 0;
 	soundControl.chBReset = false;
 
-	systemEvents.addEvent(16777216 / sampleRate, sampleEvent, this);
+	systemEvents.addEvent(16777216 / 32768, sampleEvent, this);
 }
 
 static const float squareWaveDutyCycles[4][8] {
@@ -128,7 +124,7 @@ void GBAAPU::sampleEvent(void *object) {
 }
 
 void GBAAPU::generateSample() {
-	for (int i = 0; i < (16777216 / sampleRate) / 4; i++) {
+	for (int i = 0; i < (16777216 / 32768) / 4; i++) {
 		if (--channel1.frequencyTimer <= 0) {
 			channel1.frequencyTimer = (2048 - (channel1.frequency * 4));
 			channel1.waveIndex = (channel1.waveIndex + 1) & 7;
@@ -139,54 +135,74 @@ void GBAAPU::generateSample() {
 		}
 	}
 
-	float ch1Sample = ch1OverrideEnable * soundControl.ch1On * channel1.dacOn * (((channel1.currentVolume * squareWaveDutyCycles[channel1.waveDuty][channel1.waveIndex]) / 7.5) - 1.0f);
-	float ch2Sample = ch2OverrideEnable * soundControl.ch2On * channel2.dacOn * (((channel2.currentVolume * squareWaveDutyCycles[channel2.waveDuty][channel2.waveIndex]) / 7.5) - 1.0f);
+	float ch1Sample = ch1OverrideEnable * soundControl.ch1On * channel1.dacOn * (((channel1.currentVolume * squareWaveDutyCycles[channel1.waveDuty][channel1.waveIndex]) / 7.5) - 1.0f) * ((float)(soundControl.psgVolume + 1) / 4);
+	i16 ch1SampleR = ch1Sample * soundControl.ch1outR * soundControl.volumeFloatR * 0x7F;
+	i16 ch1SampleL = ch1Sample * soundControl.ch1outL * soundControl.volumeFloatL * 0x7F;
+	float ch2Sample = ch2OverrideEnable * soundControl.ch2On * channel2.dacOn * (((channel2.currentVolume * squareWaveDutyCycles[channel2.waveDuty][channel2.waveIndex]) / 7.5) - 1.0f) * ((float)(soundControl.psgVolume + 1) / 4);
+	i16 ch2SampleR = ch2Sample * soundControl.ch2outR * soundControl.volumeFloatR * 0x7F;
+	i16 ch2SampleL = ch2Sample * soundControl.ch2outL * soundControl.volumeFloatL * 0x7F;
 	float ch3Sample = ch3OverrideEnable * 0;
+	i16 ch3SampleR = ch3Sample * soundControl.ch3outR * soundControl.volumeFloatR * 0x7F;
+	i16 ch3SampleL = ch3Sample * soundControl.ch3outL * soundControl.volumeFloatL * 0x7F;
 	float ch4Sample = ch4OverrideEnable * 0;
+	i16 ch4SampleR = ch4Sample * soundControl.ch4outR * soundControl.volumeFloatR * 0x7F;
+	i16 ch4SampleL = ch4Sample * soundControl.ch4outL * soundControl.volumeFloatL * 0x7F;
 	float chASample = chAOverrideEnable * (channelA.currentSample * ((float)(soundControl.chAVolume + 1) / 2));
+	i16 chASampleR = chASample * soundControl.chAoutR * 0x1FF;
+	i16 chASampleL = chASample * soundControl.chAoutL * 0x1FF;
+	//printf("%d, %d\n", soundControl.chAoutR, soundControl.chAoutL);
 	float chBSample = chBOverrideEnable * (channelB.currentSample * ((float)(soundControl.chBVolume + 1) / 2));
+	i16 chBSampleR = chBSample * soundControl.chBoutR * 0x1FF;
+	i16 chBSampleL = chBSample * soundControl.chBoutL * 0x1FF;
+	//printf("%d, %d\n%d, %d\n\n", chASampleR, chASampleL, chBSampleR, chBSampleL);
 	//printf("%f  %f\n", channelA.currentSample, channelB.currentSample);
 
 	if (soundControl.allOn) {
-		sampleBuffer[sampleBufferIndex++] = (((((ch1Sample * soundControl.ch1out1) + (ch2Sample * soundControl.ch2out1) + (ch3Sample * soundControl.ch3out1) + (ch4Sample * soundControl.ch4out1)) * ((float)(soundControl.psgVolume + 1) / 4)) + (chASample * soundControl.chAout1) + (chBSample * soundControl.chBout1)) / 6) * soundControl.volumeFloat1 * 0x7FFF;
-		sampleBuffer[sampleBufferIndex++] = (((((ch1Sample * soundControl.ch1out2) + (ch2Sample * soundControl.ch2out2) + (ch3Sample * soundControl.ch3out2) + (ch4Sample * soundControl.ch4out2)) * ((float)(soundControl.psgVolume + 1) / 4)) + (chASample * soundControl.chAout2) + (chBSample * soundControl.chBout2)) / 6) * soundControl.volumeFloat2 * 0x7FFF;
+		sampleBuffer[sampleBufferIndex] = std::clamp(ch1SampleR + ch2SampleR + ch3SampleR + ch4SampleR + chASampleR + chBSampleR + soundControl.biasLevel, 0, 0x3FF);
+		sampleBuffer[sampleBufferIndex] = ((sampleBuffer[sampleBufferIndex] << 6) | (sampleBuffer[sampleBufferIndex] >> 4)) - 0x8000;
+		sampleBufferIndex++;
+		sampleBuffer[sampleBufferIndex] = std::clamp(ch1SampleL + ch2SampleL + ch3SampleL + ch4SampleL + chASampleL + chBSampleL + soundControl.biasLevel, 0, 0x3FF);
+		sampleBuffer[sampleBufferIndex] = ((sampleBuffer[sampleBufferIndex] << 6) | (sampleBuffer[sampleBufferIndex] >> 4)) - 0x8000;
+		sampleBufferIndex++;
+		//printf("%d,     %d\n", sampleBuffer[sampleBufferIndex - 2], sampleBuffer[sampleBufferIndex - 1]);
 	} else {
-		sampleBuffer[sampleBufferIndex++] = 0;
-		sampleBuffer[sampleBufferIndex++] = 0;
+		sampleBuffer[sampleBufferIndex++] = ((soundControl.biasLevel << 6) | (soundControl.biasLevel >> 4)) - 0x8000;
+		sampleBuffer[sampleBufferIndex++] = ((soundControl.biasLevel << 6) | (soundControl.biasLevel >> 4)) - 0x8000;
 	}
-	//sampleBuffer[sampleBufferIndex++] = (sampleBufferIndex & 8) ? 0x7FFFFFFF : 0;
-	//sampleBuffer[sampleBufferIndex++] = (sampleBufferIndex & 8) ? 0x7FFFFFFF : 0;
+	//sampleBuffer[sampleBufferIndex++] = (sampleBufferIndex & 8) ? 0x7FFF : 0;
+	//sampleBuffer[sampleBufferIndex++] = (sampleBufferIndex & 8) ? 0x7FFF : 0;
 
 	if (sampleBufferIndex == (sizeof(sampleBuffer) / sizeof(i16)))
 		bus.cpu.running = false;
 
-	systemEvents.addEvent(16777216 / sampleRate, sampleEvent, this);
+	systemEvents.addEvent(16777216 / 32768, sampleEvent, this);
 }
 
 void GBAAPU::onTimer(int timerNum) {
-	//printf("test\n");
 	if (soundControl.chATimer == timerNum) {
 		// Get new sample
-		channelA.currentSample = (float)((i8)(channelA.FIFO_AL & 0xFF)) / 128;
-
-		// Shift buffer
-		channelA.FIFO_AL = (channelA.FIFO_AL >> 8) | (channelA.FIFO_AL << 24);
-		channelA.FIFO_A >>= 8;
+		if (channelA.fifo.size()) {
+			channelA.currentSample = (float)channelA.fifo.front() / 128;
+			channelA.fifo.pop();
+		} else {
+			channelA.currentSample = 0;
+		}
 
 		// Request new data
-		if (--channelA.samplesInFifo == 4)
+		if (channelA.fifo.size() <= 16)
 			bus.dma.onFifoA();
 	}
 	if (soundControl.chBTimer == timerNum) {
 		// Get new sample
-		channelB.currentSample = (float)((i8)(channelB.FIFO_BL & 0xFF)) / 128;
-
-		// Shift buffer
-		channelB.FIFO_BL = (channelB.FIFO_BL >> 8) | (channelB.FIFO_BL << 24);
-		channelB.FIFO_B >>= 8;
+		if (channelB.fifo.size()) {
+			channelB.currentSample = (float)channelB.fifo.front() / 128;
+			channelB.fifo.pop();
+		} else {
+			channelB.currentSample = 0;
+		}
 
 		// Request new data
-		if (--channelB.samplesInFifo <= 4)
+		if (channelB.fifo.size() <= 16)
 			bus.dma.onFifoB();
 	}
 }
@@ -206,21 +222,22 @@ u8 GBAAPU::readIO(u32 address) {
 	case 0x4000065:
 		return (u8)((channel1.SOUND1CNT_X >> 8) & 0x40);
 	case 0x4000066:
-		return (u8)(channel1.SOUND1CNT_X >> 16);
 	case 0x4000067:
-		return (u8)(channel1.SOUND1CNT_X >> 24);
+		return 0;
 	case 0x4000068:
 		return (u8)channel2.SOUND2CNT_L;
 	case 0x4000069:
 		return (u8)(channel2.SOUND2CNT_L >> 8);
+	case 0x400006A:
+	case 0x400006B:
+		return 0;
 	case 0x400006C:
 		return (u8)channel2.SOUND2CNT_H;
 	case 0x400006D:
 		return (u8)(channel2.SOUND2CNT_H >> 8);
 	case 0x400006E:
-		return (u8)(channel2.SOUND2CNT_H >> 16);
 	case 0x400006F:
-		return (u8)(channel2.SOUND2CNT_H >> 24);
+		return 0;
 	case 0x4000080:
 		return (u8)soundControl.SOUNDCNT_L;
 	case 0x4000081:
@@ -234,17 +251,15 @@ u8 GBAAPU::readIO(u32 address) {
 	case 0x4000085:
 		return (u8)(soundControl.SOUNDCNT_X >> 8);
 	case 0x4000086:
-		return (u8)(soundControl.SOUNDCNT_X >> 16);
 	case 0x4000087:
-		return (u8)(soundControl.SOUNDCNT_X >> 24);
+		return 0;
 	case 0x4000088:
 		return (u8)soundControl.SOUNDBIAS;
 	case 0x4000089:
 		return (u8)(soundControl.SOUNDBIAS >> 8);
 	case 0x400008A:
-		return (u8)(soundControl.SOUNDBIAS >> 16);
 	case 0x400008B:
-		return (u8)(soundControl.SOUNDBIAS >> 24);
+		return 0;
 	default:
 		return bus.openBus<u8>(address);
 	}
@@ -315,8 +330,8 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 		break;
 	case 0x4000080:
 		soundControl.SOUNDCNT_L = (soundControl.SOUNDCNT_L & 0xFF00) | value;
-		soundControl.volumeFloat1 = (float)soundControl.out1Volume / 7;
-		soundControl.volumeFloat2 = (float)soundControl.out2Volume / 7;
+		soundControl.volumeFloatR = (float)soundControl.outRVolume / 7;
+		soundControl.volumeFloatL = (float)soundControl.outLVolume / 7;
 		break;
 	case 0x4000081:
 		soundControl.SOUNDCNT_L = (soundControl.SOUNDCNT_L & 0x00FF) | (value << 8);
@@ -328,15 +343,13 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 		soundControl.SOUNDCNT_H = (soundControl.SOUNDCNT_H & 0x00FF) | (value << 8);
 		
 		if (soundControl.chAReset) {
-			channelA.FIFO_A = channelA.FIFO_AL = 0;
-			channelA.samplesInFifo = 0;
+			channelA.fifo = {};
 			channelA.currentSample = 0;
 
 			soundControl.chAReset = false;
 		}
 		if (soundControl.chBReset) {
-			channelB.FIFO_B = channelB.FIFO_BL = 0;
-			channelB.samplesInFifo = 0;
+			channelB.fifo = {};
 			channelB.currentSample = 0;
 
 			soundControl.chBReset = false;
@@ -352,38 +365,20 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 		soundControl.SOUNDBIAS = (soundControl.SOUNDBIAS & 0x00FF) | (value << 8);
 		break;
 	case 0x40000A0:
-		//if (value)
-			printf("%d\n", value);
-		channelA.FIFO_A = (channelA.FIFO_A & 0xFFFFFF00) | value;
-		channelA.samplesInFifo = 8;
-		break;
 	case 0x40000A1:
-		channelA.FIFO_A = (channelA.FIFO_A & 0xFFFF00FF) | (value << 8);
-		channelA.samplesInFifo = 8;
-		break;
 	case 0x40000A2:
-		channelA.FIFO_A = (channelA.FIFO_A & 0xFF00FFFF) | (value << 16);
-		channelA.samplesInFifo = 8;
-		break;
 	case 0x40000A3:
-		channelA.FIFO_A = (channelA.FIFO_A & 0x00FFFFFF) | (value << 24);
-		channelA.samplesInFifo = 8;
+		//printf("%d\n", (i8)value);
+		if (channelA.fifo.size() < 32)
+			channelA.fifo.push((i8)value);
 		break;
 	case 0x40000A4:
-		channelB.FIFO_B = (channelB.FIFO_B & 0xFFFFFF00) | value;
-		channelB.samplesInFifo = 8;
-		break;
 	case 0x40000A5:
-		channelB.FIFO_B = (channelB.FIFO_B & 0xFFFF00FF) | (value << 8);
-		channelB.samplesInFifo = 8;
-		break;
 	case 0x40000A6:
-		channelB.FIFO_B = (channelB.FIFO_B & 0xFF00FFFF) | (value << 16);
-		channelB.samplesInFifo = 8;
-		break;
 	case 0x40000A7:
-		channelB.FIFO_B = (channelB.FIFO_B & 0x00FFFFFF) | (value << 24);
-		channelB.samplesInFifo = 8;
+		//printf("%d\n", (i8)value);
+		if (channelB.fifo.size() < 32)
+			channelB.fifo.push((i8)value);
 		break;
 	}
 }

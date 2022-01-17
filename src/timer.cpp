@@ -2,6 +2,7 @@
 #include "timer.hpp"
 #include "scheduler.hpp"
 #include "gba.hpp"
+#include <cstdio>
 
 GBATIMER::GBATIMER(GameBoyAdvance& bus_) : bus(bus_) {
 	reset();
@@ -29,7 +30,8 @@ void GBATIMER::checkOverflow() {
 			tim0Timestamp = systemEvents.currentTime;
 			if (!tim0Cascade)
 				systemEvents.addEvent((0x10000 - TIM0D) * (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1), &checkOverflowEvent, this);
-			
+
+			bus.apu.onTimer(0);
 			previousOverflow = true;
 		} else {
 			previousOverflow = false;
@@ -43,7 +45,7 @@ void GBATIMER::checkOverflow() {
 			TIM1D = initialTIM1D;
 			tim1Timestamp = systemEvents.currentTime;
 			systemEvents.addEvent((0x10000 - TIM1D) * (tim1Frequency ? (16 << (2 * tim1Frequency)) : 1), &checkOverflowEvent, this);
-			bus.apu.onTimer(0);
+			bus.apu.onTimer(1);
 
 			previousOverflow = true;
 		} else if (tim1Cascade && previousOverflow) { // Cascade
@@ -51,7 +53,7 @@ void GBATIMER::checkOverflow() {
 				if (tim1Irq)
 					bus.cpu.requestInterrupt(GBACPU::IRQ_TIMER1);
 
-				bus.apu.onTimer(0);
+				bus.apu.onTimer(1);
 				previousOverflow = true;
 			}
 		} else {
@@ -66,7 +68,6 @@ void GBATIMER::checkOverflow() {
 			TIM2D = initialTIM2D;
 			tim2Timestamp = systemEvents.currentTime;
 			systemEvents.addEvent((0x10000 - TIM2D) * (tim2Frequency ? (16 << (2 * tim2Frequency)) : 1), &checkOverflowEvent, this);
-			bus.apu.onTimer(1);
 
 			previousOverflow = true;
 		} else if (tim2Cascade && previousOverflow) { // Cascade
@@ -74,7 +75,6 @@ void GBATIMER::checkOverflow() {
 				if (tim2Irq)
 					bus.cpu.requestInterrupt(GBACPU::IRQ_TIMER2);
 
-				bus.apu.onTimer(1);
 				previousOverflow = true;
 			}
 		} else {

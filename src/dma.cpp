@@ -179,8 +179,13 @@ void GBADMA::doDma() {
 	if (length == 0)
 		length = (channel == 3) ? 0x10000 : 0x4000;
 
-	if ((control->srcControl == 1) && (*sourceAddress >= 0x8000000) && (*sourceAddress < 0xE000000))
+	// TODO: Create shaddow DMACNT registers
+	if ((control->srcControl < 3) && (*sourceAddress >= 0x8000000) && (*sourceAddress < 0xE000000))
 		control->srcControl = 0;
+	if (((channel == 1) || (channel == 2)) && (control->timing == 3)) {
+		length = 4;
+		control->dstControl = 2;
+	}
 
 	if (logDma) {
 		bus.log << fmt::format("DMA Channel {} from 0x{:0>7X} to 0x{:0>7X} of length 0x{:0>4X} with control = 0x{:0>4X}\n", channel, *sourceAddress, *destinationAddress, length, control->raw >> 16);
@@ -189,7 +194,7 @@ void GBADMA::doDma() {
 		case 0: bus.log << "Immediately"; break;
 		case 1: bus.log << "VBlank"; break;
 		case 2: bus.log << "HBlank"; break;
-		case 3: bus.log << "DMA"; break;
+		case 3: bus.log << "Audio"; break;
 		}
 		bus.log << "  Chunk Size: " << (16 << control->transferSize) << "-bit  Repeat: " << (control->repeat ? "True" : "False") << "\n";
 		bus.log << "Source Adjustment: ";
@@ -436,7 +441,6 @@ void GBADMA::writeIO(u32 address, u8 value) {
 				checkDma();
 			}
 		}
-		printf("0x%04X\n", DMA2CNT.raw >> 16);
 		break;
 	case 0x40000D4:
 		DMA3SAD = (DMA3SAD & 0xFFFFFF00) | value;
