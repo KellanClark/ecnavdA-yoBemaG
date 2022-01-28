@@ -144,6 +144,7 @@ void GBADMA::doDma() {
 	u32 *sourceAddress;
 	u32 *destinationAddress;
 	DmaControlBits *control;
+	u32 *openBus;
 	switch (channel) {
 	case 0:
 		sourceAddress = &internalDMA0SAD;
@@ -151,6 +152,7 @@ void GBADMA::doDma() {
 		control = &internalDMA0CNT;
 		currentDma = 0;
 		dma0Queued = false;
+		openBus = &dma0OpenBus;
 		break;
 	case 1:
 		sourceAddress = &internalDMA1SAD;
@@ -158,6 +160,7 @@ void GBADMA::doDma() {
 		control = &internalDMA1CNT;
 		currentDma = 1;
 		dma1Queued = false;
+		openBus = &dma1OpenBus;
 		break;
 	case 2:
 		sourceAddress = &internalDMA2SAD;
@@ -165,6 +168,7 @@ void GBADMA::doDma() {
 		control = &internalDMA2CNT;
 		currentDma = 2;
 		dma2Queued = false;
+		openBus = &dma2OpenBus;
 		break;
 	case 3:
 		sourceAddress = &internalDMA3SAD;
@@ -172,6 +176,7 @@ void GBADMA::doDma() {
 		control = &internalDMA3CNT;
 		currentDma = 3;
 		dma3Queued = false;
+		openBus = &dma3OpenBus;
 		break;
 	}
 
@@ -215,8 +220,13 @@ void GBADMA::doDma() {
 
 	if (control->transferSize) { // 32 bit
 		for (int i = 0; i < length; i++) {
-			u32 data = bus.read<u32>(*sourceAddress & ~3);
-			bus.write<u32>(*destinationAddress & ~3, data);
+			if (*sourceAddress < 0x2000000) {
+				bus.write<u32>(*destinationAddress & ~3, *openBus);
+			} else {
+				u32 data = bus.read<u32>(*sourceAddress & ~3);
+				bus.write<u32>(*destinationAddress & ~3, data);
+				*openBus = data;
+			}
 
 			if ((control->dstControl == 0) || (control->dstControl == 3)) { // Increment
 				*destinationAddress += 4;
@@ -232,8 +242,13 @@ void GBADMA::doDma() {
 		}
 	} else { // 16 bit
 		for (int i = 0; i < length; i++) {
-			u16 data = bus.read<u16>(*sourceAddress & ~1);
-			bus.write<u16>(*destinationAddress & ~1, data);
+			if (*sourceAddress < 0x2000000) {
+				bus.write<u16>(*destinationAddress & ~1, (u16)*openBus);
+			} else {
+				u16 data = bus.read<u16>(*sourceAddress & ~1);
+				bus.write<u16>(*destinationAddress & ~1, data);
+				*openBus = (data << 16) | data;
+			}
 
 			if ((control->dstControl == 0) || (control->dstControl == 3)) { // Increment
 				*destinationAddress += 2;

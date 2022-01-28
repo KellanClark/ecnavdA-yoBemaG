@@ -86,6 +86,7 @@ public:
 private:
 	u8 *pageTableRead[8192];
 	u8 *pageTableWrite[8192];
+	u8 *pageTableWriteByte[8192];
 };
 
 #endif

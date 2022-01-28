@@ -368,7 +368,6 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 	case 0x40000A1:
 	case 0x40000A2:
 	case 0x40000A3:
-		//printf("%d\n", (i8)value);
 		if (channelA.fifo.size() < 32)
 			channelA.fifo.push((i8)value);
 		break;
@@ -376,7 +375,6 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 	case 0x40000A5:
 	case 0x40000A6:
 	case 0x40000A7:
-		//printf("%d\n", (i8)value);
 		if (channelB.fifo.size() < 32)
 			channelB.fifo.push((i8)value);
 		break;

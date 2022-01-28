@@ -345,7 +345,6 @@ int main(int argc, char *argv[]) {
 }
 
 void audioCallback(void *userdata, uint8_t *stream, int len) {
-	printf("test\n");
 	while ((GBA.apu.sampleBufferIndex * 2) < len) {
 		if (quit)
 			return;

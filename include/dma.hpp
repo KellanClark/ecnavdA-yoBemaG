@@ -52,18 +52,22 @@ public:
 	u32 internalDMA0SAD;
 	u32 internalDMA0DAD;
 	DmaControlBits internalDMA0CNT;
+	u32 dma0OpenBus;
 
 	u32 internalDMA1SAD;
 	u32 internalDMA1DAD;
 	DmaControlBits internalDMA1CNT;
+	u32 dma1OpenBus;
 
 	u32 internalDMA2SAD;
 	u32 internalDMA2DAD;
 	DmaControlBits internalDMA2CNT;
+	u32 dma2OpenBus;
 
 	u32 internalDMA3SAD;
 	u32 internalDMA3DAD;
 	DmaControlBits internalDMA3CNT;
+	u32 dma3OpenBus;
 
 	u32 DMA0SAD; // 0x40000B0
 	u32 DMA0DAD; // 0x40000B4

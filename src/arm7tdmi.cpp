@@ -1306,7 +1306,7 @@ void ARM7TDMI::singleDataSwap(u32 opcode) {
 		reg.R[destinationRegister] = result;
 	} else {
 		u32 result = bus.read<u32>(address);
-		bus.write<u32>(address & ~3, reg.R[sourceRegister]);
+		bus.write<u32>(address, reg.R[sourceRegister]);
 
 		reg.R[destinationRegister] = result;
 	}
@@ -1466,7 +1466,7 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 	} else {
 		switch (shBits) {
 		case 1: // STRH
-			bus.write<u16>(address & ~1, (u16)reg.R[srcDestRegister]);
+			bus.write<u16>(address, (u16)reg.R[srcDestRegister]);
 			break;
 		default:
 			unknownOpcodeArm(opcode, "SH Bits");
@@ -1526,7 +1526,7 @@ void ARM7TDMI::singleDataTransfer(u32 opcode) {
 		if (byteWord) {
 			bus.write<u8>(address, reg.R[srcDestRegister] + (srcDestRegister == 15 ? 4 : 0));
 		} else {
-			bus.write<u32>(address & ~3, reg.R[srcDestRegister] + (srcDestRegister == 15 ? 4 : 0));
+			bus.write<u32>(address, reg.R[srcDestRegister] + (srcDestRegister == 15 ? 4 : 0));
 		}
 	}
 
@@ -1583,7 +1583,6 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 		if (!prePostIndex)
 			address += 4;
 	}
-	address &= ~3;
 
 	cpuMode oldMode = (cpuMode)reg.mode;
 	if (sBit) {
@@ -1591,18 +1590,19 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 		reg.mode = MODE_USER;
 	}
 
-	if (loadStore) {
+	if (loadStore) { // LDM
 		if (writeBack)
 			reg.R[baseRegister] = writeBackAddress;
 
 		if (emptyRegList) {
-			reg.R[15] = bus.read<u32>(address);
+			reg.R[15] = bus.read<u32>(address); // TODO rotate
 			pipelineStage = 1;
 			incrementR15 = false;
 		} else {
 			for (int i = 0; i < 16; i++) {
 				if (opcode & (1 << i)) {
-					reg.R[i] = bus.read<u32>(address);
+					u32 val = bus.read<u32>(address);
+					reg.R[i] = (val >> ((4 - (address & 3)) * 8)) | (val << ((address & 3) * 8)); // Undo rotate
 					address += 4;
 				}
 			}
@@ -1612,7 +1612,7 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 				incrementR15 = false;
 			}
 		}
-	} else {
+	} else { // STM
 		if (emptyRegList) {
 			bus.write<u32>(address, reg.R[15] + 4);
 			reg.R[baseRegister] = writeBackAddress;
@@ -1998,7 +1998,7 @@ void ARM7TDMI::thumbLoadStoreRegOffset(u16 opcode) {
 		if (byteWord) {
 			bus.write<u8>(address, (u8)reg.R[srcDestRegister]);
 		} else {
-			bus.write<u32>(address & ~3, reg.R[srcDestRegister]);
+			bus.write<u32>(address, reg.R[srcDestRegister]);
 		}
 	}
 }
@@ -2011,7 +2011,7 @@ void ARM7TDMI::thumbLoadStoreSext(u16 opcode) {
 	u32 result = 0;
 	switch (hsBits) {
 	case 0: // STRH
-		bus.write<u16>(address & ~1, (u16)reg.R[srcDestRegister]);
+		bus.write<u16>(address, (u16)reg.R[srcDestRegister]);
 		break;
 	case 1: // LDSB
 		result = bus.read<u8>(address);
@@ -2052,7 +2052,7 @@ void ARM7TDMI::thumbLoadStoreImmediateOffset(u16 opcode) {
 		if (byteWord) {
 			bus.write<u8>(address, (u8)reg.R[srcDestRegister]);
 		} else {
-			bus.write<u32>(address & ~3, reg.R[srcDestRegister]);
+			bus.write<u32>(address, reg.R[srcDestRegister]);
 		}
 	}
 }
@@ -2067,7 +2067,7 @@ void ARM7TDMI::thumbLoadStoreHalfword(u16 opcode) {
 
 		reg.R[srcDestRegister] = result;
 	} else { // STRH
-		bus.write<u16>(address & ~1, (u16)reg.R[srcDestRegister]);
+		bus.write<u16>(address, (u16)reg.R[srcDestRegister]);
 	}
 }
 
@@ -2078,7 +2078,7 @@ void ARM7TDMI::thumbSpRelativeLoadStore(u16 opcode) {
 	if (loadStore) {
 		reg.R[destinationReg] = bus.read<u32>(address);
 	} else {
-		bus.write<u32>(address & ~3, reg.R[destinationReg]);
+		bus.write<u32>(address, reg.R[destinationReg]);
 	}
 }
 
@@ -2112,18 +2112,18 @@ void ARM7TDMI::thumbPushPopRegisters(u16 opcode) {
 		writeBackAddress = address + std::popcount((u32)opcode & 0xFF) * 4;
 		if (emptyRegList)
 			writeBackAddress += 0x40;
-		address &= ~3;
 
 		reg.R[13] = writeBackAddress + (pcLr * 4);
 
 		if (emptyRegList) {
-			reg.R[15] = bus.read<u32>(address);
+			reg.R[15] = bus.read<u32>(address); // TODO rotate
 			pipelineStage = 1;
 			incrementR15 = false;
 		} else {
 			for (int i = 0; i < 8; i++) {
 				if (opcode & (1 << i)) {
-					reg.R[i] = bus.read<u32>(address);
+					u32 val = bus.read<u32>(address);
+					reg.R[i] = (val >> ((4 - (address & 3)) * 8)) | (val << ((address & 3) * 8)); // Undo rotate
 					address += 4;
 				}
 			}
@@ -2138,7 +2138,6 @@ void ARM7TDMI::thumbPushPopRegisters(u16 opcode) {
 		if (emptyRegList)
 			address -= 0x40;
 		writeBackAddress = address;
-		address &= ~3;
 
 		if (emptyRegList) {
 			bus.write<u32>(address, reg.R[15] + 2);
@@ -2167,25 +2166,25 @@ void ARM7TDMI::thumbMultipleLoadStore(u16 opcode) {
 	writeBackAddress = address + std::popcount((u32)opcode & 0xFF) * 4;
 	if (emptyRegList)
 		writeBackAddress += 0x40;
-	address &= ~3;
 
-	if (loadStore) {
+	if (loadStore) { // LDM
 		if (!(opcode & (1 << baseReg)))
 			reg.R[baseReg] = writeBackAddress;
 
 		if (emptyRegList) {
-			reg.R[15] = bus.read<u32>(address);
+			reg.R[15] = bus.read<u32>(address); // TODO rotate
 			pipelineStage = 1;
 			incrementR15 = false;
 		} else {
 			for (int i = 0; i < 8; i++) {
 				if (opcode & (1 << i)) {
-					reg.R[i] = bus.read<u32>(address);
+					u32 val = bus.read<u32>(address);
+					reg.R[i] = (val >> ((4 - (address & 3)) * 8)) | (val << ((address & 3) * 8)); // Undo rotate
 					address += 4;
 				}
 			}
 		}
-	} else {
+	} else { // STM
 		if (emptyRegList) {
 			bus.write<u32>(address, reg.R[15] + 2);
 			reg.R[baseReg] = writeBackAddress;

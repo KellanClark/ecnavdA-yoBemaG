@@ -9,18 +9,19 @@ GameBoyAdvance::GameBoyAdvance() : cpu(*this), apu(*this), dma(*this), ppu(*this
 	logFlash = false;
 
 	// Fill page tables
-	for (int i = toPage(0x2000000); i < toPage(0x3000000); i += (256 / 32)) {
+	for (int i = toPage(0x2000000); i < toPage(0x3000000); i += (256 / 32)) { // EWRAM
 		for (int j = i; j < (i + (256 / 32)); j++) {
-			pageTableRead[j] = pageTableWrite[j] = &ewram[(j - i) << 15];
+			pageTableRead[j] = pageTableWrite[j] = pageTableWriteByte[j] = &ewram[(j - i) << 15];
 		}
 	}
-	for (int i = toPage(0x3000000); i < toPage(0x4000000); i++) {
-		pageTableRead[i] = pageTableWrite[i] = &iwram[0];
+	for (int i = toPage(0x3000000); i < toPage(0x4000000); i++) { // IWRAM
+		pageTableRead[i] = pageTableWrite[i] = pageTableWriteByte[i] = &iwram[0];
 	}
-	for (int i = toPage(0x6000000); i < toPage(0x7000000); i += 4) {
+	for (int i = toPage(0x6000000); i < toPage(0x7000000); i += 4) { // VRAM
 		pageTableRead[i] = pageTableWrite[i] = &ppu.vram[0];
 		pageTableRead[i + 1] = pageTableWrite[i + 1] = &ppu.vram[0x08000];
 		pageTableRead[i + 2] = pageTableWrite[i + 2] = &ppu.vram[0x10000];
+		pageTableRead[i + 3] = pageTableWrite[i + 3] = &ppu.vram[0x10000];
 	}
 
 	reset();
@@ -129,10 +130,10 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	saveFileStream.seekg(0, std::ios::beg);
 
 	// Get save type/size
-	//saveType = SRAM_32K;
-	//sram.resize(32 * 1024);
-	saveType = FLASH_128K;
-	sram.resize(128 * 1024);
+	saveType = SRAM_32K;
+	sram.resize(32 * 1024);
+	//saveType = FLASH_128K;
+	//sram.resize(128 * 1024);
 	char eeprom8KStr[] = "EEPROM_V";
 	if (searchForString((char *)romBuff.data(), romBuff.size(), eeprom8KStr, sizeof(eeprom8KStr) - 1)) {
 		saveType = EEPROM_8K;
@@ -179,14 +180,7 @@ void GameBoyAdvance::save() {
 
 template <typename T>
 T GameBoyAdvance::openBus(u32 address) {
-	switch (sizeof(T)) {
-	case 1:
-		return (openBusValue >> ((address & 3) * 8)) & 0xFF;
-	case 2:
-		return (openBusValue >> ((address & 3) * 8)) & 0xFFFF;
-	case 4:
-		return (openBusValue >> ((address & 3) * 8)) & 0xFFFFFF;
-	}
+	return (address <= 0x3FFF) ? (T)biosOpenBusValue : (T)openBusValue;
 }
 template u8 GameBoyAdvance::openBus<u8>(u32);
 template u16 GameBoyAdvance::openBus<u16>(u32);
@@ -205,9 +199,8 @@ u32 GameBoyAdvance::read(u32 address) {
 		} else {
 			switch (page) {
 			case toPage(0x0000000): // BIOS
-				if (address <= 0x3FFF) {
+				if ((address <= 0x3FFF) && (cpu.reg.R[15] < 0x2000000)) {
 					std::memcpy(&val, (u8*)biosBuff.data() + offset, sizeof(T));
-					return val;
 				}
 				break;
 			case toPage(0x4000000): // I/O
@@ -268,10 +261,11 @@ u32 GameBoyAdvance::read(u32 address) {
 				if (saveType == SRAM_32K) {
 					val = sram[address & 0x7FFF];
 
-					if (sizeof(T) >= 2)
-						val |= val << 8;
-					if (sizeof(T) == 4)
-						val |= val << 16;
+					if (sizeof(T) == 2) {
+						val *= 0x0101;
+					} else if (sizeof(T) == 4) {
+						val *= 0x01010101;
+					}
 				} else if (saveType == FLASH_128K) {
 					if (flashChipId && ((address & 0xFFFF) < 2)) { // Read chip ID instead of data
 						if ((address & 0xFFFF) == 2) {
@@ -280,37 +274,51 @@ u32 GameBoyAdvance::read(u32 address) {
 							return 0x13;
 						}
 					}
-					return (T)sram[flashBank | (address & 0xFFFF)];
+					val = sram[flashBank | (address & 0xFFFF)];
+
+					if (sizeof(T) == 2) {
+						val *= 0x0101;
+					} else if (sizeof(T) == 4) {
+						val *= 0x01010101;
+					}
 				}
 				break;
 			}
 		}
 	}
 
+	u32 newOpenBus = 0;
 	if (sizeof(T) == 2) {
 		switch (page) {
 		case toPage(0x2000000) ... toPage(0x3000000) - 1: // EWRAM
 		case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
 		case toPage(0x6000000) ... toPage(0x7000000) - 1: // VRAM
 		case toPage(0x8000000) ... toPage(0xE000000) - 1: // Cartridge ROM
-			openBusValue = (val << 16) | val;
+			newOpenBus = (val << 16) | val;
 			break;
 
 		case toPage(0x0000000) ... toPage(0x2000000) - 1: // BIOS
+			newOpenBus = (val << 16) | (biosOpenBusValue >> 16);
+			break;
 		case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
-			openBusValue = (val << 16) | (openBusValue >> 16);
+			newOpenBus = (val << 16) | (openBusValue >> 16);
 			break;
 
 		case toPage(0x3000000) ... toPage(0x4000000) - 1: // IWRAM
 			if (address & 2) {
-				openBusValue = (val << 16) | (openBusValue & 0x00FF);
+				newOpenBus = (val << 16) | (openBusValue & 0x00FF);
 			} else {
-				openBusValue = (openBusValue & 0xFF00) | val;
+				newOpenBus = (openBusValue & 0xFF00) | val;
 			}
 			break;
 		}
-	} else if (sizeof(T) == 4) {
-		openBusValue = val;
+	} else {
+		newOpenBus = val;
+	}
+	if (cpu.reg.R[15] < 0x2000000) {
+		biosOpenBusValue = newOpenBus;
+	} else {
+		openBusValue = newOpenBus;
 	}
 
 	// Rotate misaligned loads
@@ -328,8 +336,8 @@ template u32 GameBoyAdvance::read<u32>(u32);
 template <typename T>
 void GameBoyAdvance::write(u32 address, T value) {
 	int page = (address & 0x0FFFFFFF) >> 15;
-	int offset = address & 0x7FFF;
-	void *pointer = pageTableWrite[page];
+	int offset = address & 0x7FFF & ~(sizeof(T) - 1);
+	void *pointer = (sizeof(T) == 1) ? pageTableWriteByte[page] : pageTableWrite[page];
 
 	if (address <= 0x0FFFFFFF) { [[likely]]
 		if (pointer != NULL) {
@@ -338,14 +346,14 @@ void GameBoyAdvance::write(u32 address, T value) {
 			switch (page) {
 			case toPage(0x4000000): // I/O
 				if (sizeof(T) == 4) {
-					write<u8>(address++, (u8)value);
-					write<u8>(address++, (u8)(value >> 8));
-					write<u8>(address++, (u8)(value >> 16));
-					write<u8>(address, (u8)(value >> 24));
+					write<u8>((address & ~3) | 0, (u8)value);
+					write<u8>((address & ~3) | 1, (u8)(value >> 8));
+					write<u8>((address & ~3) | 2, (u8)(value >> 16));
+					write<u8>((address & ~3) | 3, (u8)(value >> 24));
 					return;
 				} else if (sizeof(T) == 2) {
-					write<u8>(address++, (u8)value);
-					write<u8>(address, (u8)(value >> 8));
+					write<u8>((address & ~1) | 0, (u8)value);
+					write<u8>((address & ~1) | 1, (u8)(value >> 8));
 					return;
 				}
 
@@ -409,11 +417,20 @@ void GameBoyAdvance::write(u32 address, T value) {
 					std::memcpy(&ppu.paletteRam[0] + (offset & 0x3FF), &value, sizeof(T));
 				}
 				break;
-			case toPage(0x7000000) ... toPage(0x8000000) - 1:
-				if (sizeof(T) == 1) {
-					std::memcpy(&ppu.oam[0] + (offset & 0x3FE), &value, sizeof(T));
-					std::memcpy(&ppu.oam[0] + ((offset & 0x3FE) | 1), &value, sizeof(T));
+			case toPage(0x6000000) ... toPage(0x7000000) - 1: // VRAM (byte only)
+				if ((address & 0x1FFFF) < 0x10000) {
+					ppu.vram[address & 0xFFFF] = value;
+					ppu.vram[(address & 0xFFFF) | 1] = value;
 				} else {
+					address &= 0x7FFF;
+					if ((ppu.bgMode > 2) && (address < 0x4000)) {
+						ppu.vram[(address & 0x7FFF) | 0x10000] = value;
+						ppu.vram[(address & 0x7FFF) | 0x10001] = value;
+					}
+				}
+				break;
+			case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
+				if (sizeof(T) != 1) {
 					std::memcpy(&ppu.oam[0] + (offset & 0x3FF), &value, sizeof(T));
 				}
 				break;
