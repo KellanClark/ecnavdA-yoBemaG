@@ -19,6 +19,7 @@ void GBAAPU::reset() {
 	soundControl.chBReset = false;
 
 	systemEvents.addEvent(16777216 / 32768, sampleEvent, this);
+	systemEvents.addEvent(8192 * 4, frameSequencerEvent, this);
 }
 
 static const float squareWaveDutyCycles[4][8] {
@@ -48,7 +49,6 @@ int GBAAPU::calculateSweepFrequency() {
 }
 
 void GBAAPU::tickFrameSequencer() {
-	return;
 	++frameSequencerCounter;
 
 	// Tick Length
@@ -126,11 +126,11 @@ void GBAAPU::sampleEvent(void *object) {
 void GBAAPU::generateSample() {
 	for (int i = 0; i < (16777216 / 32768) / 4; i++) {
 		if (--channel1.frequencyTimer <= 0) {
-			channel1.frequencyTimer = (2048 - (channel1.frequency * 4));
+			channel1.frequencyTimer = (2048 - channel1.frequency) * 4;
 			channel1.waveIndex = (channel1.waveIndex + 1) & 7;
 		}
 		if (--channel2.frequencyTimer <= 0) {
-			channel2.frequencyTimer = (2048 - (channel2.frequency * 4));
+			channel2.frequencyTimer = (2048 - channel2.frequency) * 4;
 			channel2.waveIndex = (channel2.waveIndex + 1) & 7;
 		}
 	}
@@ -154,8 +154,7 @@ void GBAAPU::generateSample() {
 	float chBSample = chBOverrideEnable * (channelB.currentSample * ((float)(soundControl.chBVolume + 1) / 2));
 	i16 chBSampleR = chBSample * soundControl.chBoutR * 0x1FF;
 	i16 chBSampleL = chBSample * soundControl.chBoutL * 0x1FF;
-	//printf("%d, %d\n%d, %d\n\n", chASampleR, chASampleL, chBSampleR, chBSampleL);
-	//printf("%f  %f\n", channelA.currentSample, channelB.currentSample);
+	//printf("%d %d %f  %f  %d, %d\n", channel2.waveDuty, channel2.waveIndex, squareWaveDutyCycles[channel2.waveDuty][channel2.waveIndex], ch2Sample, ch2SampleR, ch2SampleL);
 
 	if (soundControl.allOn) {
 		sampleBuffer[sampleBufferIndex] = std::clamp(ch1SampleR + ch2SampleR + ch3SampleR + ch4SampleR + chASampleR + chBSampleR + soundControl.biasLevel, 0, 0x3FF);
@@ -164,13 +163,10 @@ void GBAAPU::generateSample() {
 		sampleBuffer[sampleBufferIndex] = std::clamp(ch1SampleL + ch2SampleL + ch3SampleL + ch4SampleL + chASampleL + chBSampleL + soundControl.biasLevel, 0, 0x3FF);
 		sampleBuffer[sampleBufferIndex] = ((sampleBuffer[sampleBufferIndex] << 6) | (sampleBuffer[sampleBufferIndex] >> 4)) - 0x8000;
 		sampleBufferIndex++;
-		//printf("%d,     %d\n", sampleBuffer[sampleBufferIndex - 2], sampleBuffer[sampleBufferIndex - 1]);
 	} else {
 		sampleBuffer[sampleBufferIndex++] = ((soundControl.biasLevel << 6) | (soundControl.biasLevel >> 4)) - 0x8000;
 		sampleBuffer[sampleBufferIndex++] = ((soundControl.biasLevel << 6) | (soundControl.biasLevel >> 4)) - 0x8000;
 	}
-	//sampleBuffer[sampleBufferIndex++] = (sampleBufferIndex & 8) ? 0x7FFF : 0;
-	//sampleBuffer[sampleBufferIndex++] = (sampleBufferIndex & 8) ? 0x7FFF : 0;
 
 	if (sampleBufferIndex == (sizeof(sampleBuffer) / sizeof(i16)))
 		bus.cpu.running = false;
@@ -300,11 +296,11 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 				soundControl.ch1On = true;
 		}
 
-		channel1.SOUND1CNT_X = (channel1.SOUND1CNT_X & 0x00FF) | ((value & 0xC0) << 8);
+		channel1.SOUND1CNT_X = (channel1.SOUND1CNT_X & 0x00FF) | ((value & 0xC7) << 8);
 		channel1.shadowFrequency = channel1.frequency;
 		break;
 	case 0x4000068:
-		channel2.SOUND2CNT_L = value;
+		channel2.SOUND2CNT_L = (channel2.SOUND2CNT_L & 0xFF00) | value;
 		channel2.lengthCounter = 64 - channel2.soundLength;
 		break;
 	case 0x4000069:

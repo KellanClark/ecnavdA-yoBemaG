@@ -405,7 +405,7 @@ void mainMenuBar() {
 		}
 		
 		ImGui::Separator();
-		if (ImGui::MenuItem("Audio Channels")) {
+		if (ImGui::BeginMenu("Audio Channels")) {
 			ImGui::MenuItem("Channel 1", NULL, &GBA.apu.ch1OverrideEnable);
 			ImGui::MenuItem("Channel 2", NULL, &GBA.apu.ch2OverrideEnable);
 			ImGui::MenuItem("Channel 3", NULL, &GBA.apu.ch3OverrideEnable);
