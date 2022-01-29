@@ -67,7 +67,15 @@ void GBAAPU::tickFrameSequencer() {
 				}
 			}
 		}
+		if (channel4.consecutiveSelection) {
+			if (channel4.lengthCounter) {
+				if ((--channel4.lengthCounter) == 0) {
+					soundControl.ch4On = false;
+				}
+			}
+		}
 	}
+
 	// Tick Volume
 	if ((frameSequencerCounter & 7) == 7) {
 		if (channel1.periodTimer) {
@@ -96,7 +104,21 @@ void GBAAPU::tickFrameSequencer() {
 				}
 			}
 		}
+		if (channel4.periodTimer) {
+			if ((--channel4.periodTimer) == 0) {
+				channel4.periodTimer = channel4.envelopeSweepNum;
+				if (channel4.periodTimer == 0) {
+					channel4.periodTimer = 8;
+				}
+				if ((channel4.currentVolume < 0xF) && channel4.envelopeIncrease) {
+					++channel4.currentVolume;
+				} else if ((channel4.currentVolume > 0) && !channel4.envelopeIncrease) {
+					--channel4.currentVolume;
+				}
+			}
+		}
 	}
+
 	// Tick Sweep
 	if ((frameSequencerCounter & 3) == 2) {
 		if (channel1.sweepTimer) {
@@ -124,6 +146,7 @@ void GBAAPU::sampleEvent(void *object) {
 }
 
 void GBAAPU::generateSample() {
+	// Tick old GB channels
 	for (int i = 0; i < (16777216 / 32768) / 4; i++) {
 		if (--channel1.frequencyTimer <= 0) {
 			channel1.frequencyTimer = (2048 - channel1.frequency) * 4;
@@ -133,18 +156,30 @@ void GBAAPU::generateSample() {
 			channel2.frequencyTimer = (2048 - channel2.frequency) * 4;
 			channel2.waveIndex = (channel2.waveIndex + 1) & 7;
 		}
+		if (--channel4.frequencyTimer <= 0) {
+			if (channel4.divideRatio) {
+				channel4.frequencyTimer = channel4.divideRatio << (channel4.shiftClockFrequency + 4);
+			} else {
+				channel4.frequencyTimer = 8 << channel4.shiftClockFrequency;
+			}
+
+			int xorBit = (channel4.lfsr ^ (channel4.lfsr >> 1)) & 1;
+			channel4.lfsr = (channel4.lfsr >> 1) | (xorBit << 14);
+			if (channel4.counterWidth)
+				channel4.lfsr = (channel4.lfsr & 0xFFBF) | (xorBit << 6);
+		}
 	}
 
-	float ch1Sample = ch1OverrideEnable * soundControl.ch1On * channel1.dacOn * (((channel1.currentVolume * squareWaveDutyCycles[channel1.waveDuty][channel1.waveIndex]) / 7.5) - 1.0f) * ((float)(soundControl.psgVolume + 1) / 4);
+	float ch1Sample = ch1OverrideEnable * soundControl.ch1On * (((channel1.currentVolume * squareWaveDutyCycles[channel1.waveDuty][channel1.waveIndex]) / 7.5) - 1.0f) * ((float)(soundControl.psgVolume + 1) / 4);
 	i16 ch1SampleR = ch1Sample * soundControl.ch1outR * soundControl.volumeFloatR * 0x7F;
 	i16 ch1SampleL = ch1Sample * soundControl.ch1outL * soundControl.volumeFloatL * 0x7F;
-	float ch2Sample = ch2OverrideEnable * soundControl.ch2On * channel2.dacOn * (((channel2.currentVolume * squareWaveDutyCycles[channel2.waveDuty][channel2.waveIndex]) / 7.5) - 1.0f) * ((float)(soundControl.psgVolume + 1) / 4);
+	float ch2Sample = ch2OverrideEnable * soundControl.ch2On * (((channel2.currentVolume * squareWaveDutyCycles[channel2.waveDuty][channel2.waveIndex]) / 7.5) - 1.0f) * ((float)(soundControl.psgVolume + 1) / 4);
 	i16 ch2SampleR = ch2Sample * soundControl.ch2outR * soundControl.volumeFloatR * 0x7F;
 	i16 ch2SampleL = ch2Sample * soundControl.ch2outL * soundControl.volumeFloatL * 0x7F;
-	float ch3Sample = ch3OverrideEnable * 0;
+	float ch3Sample = ch3OverrideEnable * soundControl.ch3On * (0) * ((float)(soundControl.psgVolume + 1) / 4);
 	i16 ch3SampleR = ch3Sample * soundControl.ch3outR * soundControl.volumeFloatR * 0x7F;
 	i16 ch3SampleL = ch3Sample * soundControl.ch3outL * soundControl.volumeFloatL * 0x7F;
-	float ch4Sample = ch4OverrideEnable * 0;
+	float ch4Sample = ch4OverrideEnable * soundControl.ch4On * (((channel4.currentVolume * ((~channel4.lfsr) & 1)) / 7.5) - 1.0f) * ((float)(soundControl.psgVolume + 1) / 4);
 	i16 ch4SampleR = ch4Sample * soundControl.ch4outR * soundControl.volumeFloatR * 0x7F;
 	i16 ch4SampleL = ch4Sample * soundControl.ch4outL * soundControl.volumeFloatL * 0x7F;
 	float chASample = chAOverrideEnable * (channelA.currentSample * ((float)(soundControl.chAVolume + 1) / 2));
@@ -214,7 +249,7 @@ u8 GBAAPU::readIO(u32 address) {
 	case 0x4000063:
 		return (u8)(channel1.SOUND1CNT_H >> 8);
 	case 0x4000064:
-		return (u8)(channel1.SOUND1CNT_X & 0);
+		return (u8)(channel1.SOUND1CNT_X & 0x00);
 	case 0x4000065:
 		return (u8)((channel1.SOUND1CNT_X >> 8) & 0x40);
 	case 0x4000066:
@@ -233,6 +268,20 @@ u8 GBAAPU::readIO(u32 address) {
 		return (u8)((channel2.SOUND2CNT_H >> 8) & 0x40);
 	case 0x400006E:
 	case 0x400006F:
+		return 0;
+	case 0x4000078:
+		return (u8)(channel4.SOUND4CNT_L & 0x00);
+	case 0x4000079:
+		return (u8)(channel4.SOUND4CNT_L >> 8);
+	case 0x400007A:
+	case 0x400007B:
+		return 0;
+	case 0x400007C:
+		return (u8)channel4.SOUND4CNT_H;
+	case 0x400007D:
+		return (u8)((channel4.SOUND4CNT_H >> 8) & 0x40);
+	case 0x400007E:
+	case 0x400007F:
 		return 0;
 	case 0x4000080:
 		return (u8)soundControl.SOUNDCNT_L;
@@ -272,9 +321,6 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 		break;
 	case 0x4000063:
 		channel1.SOUND1CNT_H = (channel1.SOUND1CNT_H & 0x00FF) | (value << 8);
-		channel1.dacOn = (value & 0xF8) != 0;
-		if (!channel1.dacOn)
-			soundControl.ch1On = false;
 		break;
 	case 0x4000064:
 		channel1.SOUND1CNT_X = (channel1.SOUND1CNT_X & 0xFF00) | value;
@@ -287,13 +333,12 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 				channel1.sweepEnabled = true;
 			if (channel1.sweepShift)
 				calculateSweepFrequency();
-			if (!channel1.lengthCounter) {
+			if (channel1.lengthCounter == 0) {
 				channel1.lengthCounter = 64;
 			}
 			channel1.periodTimer = channel1.envelopeSweepNum;
 			channel1.currentVolume = channel1.envelopeStartVolume;
-			if (channel1.dacOn)
-				soundControl.ch1On = true;
+			soundControl.ch1On = true;
 		}
 
 		channel1.SOUND1CNT_X = (channel1.SOUND1CNT_X & 0x00FF) | ((value & 0xC7) << 8);
@@ -305,24 +350,42 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 		break;
 	case 0x4000069:
 		channel2.SOUND2CNT_L = (channel2.SOUND2CNT_L & 0x00FF) | (value << 8);
-		channel2.dacOn = (value & 0xF8) != 0;
-		if (!channel2.dacOn)
-			soundControl.ch2On = false;
 		break;
 	case 0x400006C:
 		channel2.SOUND2CNT_H = (channel2.SOUND2CNT_H & 0xFF00) | value;
 		break;
 	case 0x400006D:
 		if (value & 0x80) {
-			if (!channel2.lengthCounter)
+			if (channel2.lengthCounter == 0)
 				channel2.lengthCounter = 64;
 			channel2.periodTimer = channel2.envelopeSweepNum;
 			channel2.currentVolume = channel2.envelopeStartVolume;
-			if (channel2.dacOn)
-				soundControl.ch2On = true;
+			soundControl.ch2On = true;
 		}
 
 		channel2.SOUND2CNT_H = (channel2.SOUND2CNT_H & 0x00FF) | (value << 8);
+		break;
+	case 0x4000078:
+		channel4.SOUND4CNT_L = (channel4.SOUND4CNT_L & 0xFF00) | (value & 0x3F);
+		channel4.lengthCounter = 64 - channel4.soundLength;
+		break;
+	case 0x4000079:
+		channel4.SOUND4CNT_L = (channel4.SOUND4CNT_L & 0x00FF) | (value << 8);
+		break;
+	case 0x400007C:
+		channel4.SOUND4CNT_H = (channel4.SOUND4CNT_H & 0xFF00) | value;
+		break;
+	case 0x400007D:
+		if (value & 0x80) {
+			channel4.lfsr = 0x7FFF;
+			if (channel4.lengthCounter == 0)
+				channel4.lengthCounter = 64;
+			channel4.periodTimer = channel4.envelopeSweepNum;
+			channel4.currentVolume = channel4.envelopeStartVolume;
+			soundControl.ch4On = true;
+		}
+
+		channel4.SOUND4CNT_H = (channel4.SOUND4CNT_H & 0x00FF) | (value << 8);
 		break;
 	case 0x4000080:
 		soundControl.SOUNDCNT_L = (soundControl.SOUNDCNT_L & 0xFF00) | (value & 0x77);

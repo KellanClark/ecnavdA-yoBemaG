@@ -67,7 +67,6 @@ public:
 			};
 			u16 SOUND1CNT_X; // 0x4000064
 		};
-		bool dacOn;
 		int frequencyTimer;
 		unsigned int waveIndex;
 		bool sweepEnabled;
@@ -97,13 +96,40 @@ public:
 			};
 			u16 SOUND2CNT_H; // 0x400006C
 		};
-		bool dacOn;
 		int frequencyTimer;
 		unsigned int waveIndex;
 		int lengthCounter;
 		int periodTimer;
 		int currentVolume;
 	} channel2;
+	struct {
+		union {
+			struct {
+				u16 soundLength : 6;
+				u16 : 2;
+				u16 envelopeSweepNum : 3;
+				u16 envelopeIncrease : 1;
+				u16 envelopeStartVolume : 4;
+			};
+			u16 SOUND4CNT_L; // 0x4000078
+		};
+		union {
+			struct {
+				u16 divideRatio : 3;
+				u16 counterWidth : 1;
+				u16 shiftClockFrequency : 4;
+				u16 : 6;
+				u16 consecutiveSelection : 1;
+				u16 initial : 1;
+			};
+			u16 SOUND4CNT_H; // 0x400007C
+		};
+		int frequencyTimer;
+		u16 lfsr;
+		int lengthCounter;
+		int periodTimer;
+		int currentVolume;
+	} channel4;
 	struct {
 		union {
 			struct {
