@@ -273,33 +273,33 @@ void GBADMA::doDma() {
 u8 GBADMA::readIO(u32 address) {
 	switch (address) {
 	case 0x40000B8:
-		return (u8)DMA0CNT.raw;
+		return 0;
 	case 0x40000B9:
-		return (u8)(DMA0CNT.raw >> 8);
+		return 0;
 	case 0x40000BA:
 		return (u8)(DMA0CNT.raw >> 16);
 	case 0x40000BB:
 		return (u8)(DMA0CNT.raw >> 24);
 	case 0x40000C4:
-		return (u8)DMA1CNT.raw;
+		return 0;
 	case 0x40000C5:
-		return (u8)(DMA1CNT.raw >> 8);
+		return 0;
 	case 0x40000C6:
 		return (u8)(DMA1CNT.raw >> 16);
 	case 0x40000C7:
 		return (u8)(DMA1CNT.raw >> 24);
 	case 0x40000D0:
-		return (u8)DMA2CNT.raw;
+		return 0;
 	case 0x40000D1:
-		return (u8)(DMA2CNT.raw >> 8);
+		return 0;
 	case 0x40000D2:
 		return (u8)(DMA2CNT.raw >> 16);
 	case 0x40000D3:
 		return (u8)(DMA2CNT.raw >> 24);
 	case 0x40000DC:
-		return (u8)DMA3CNT.raw;
+		return 0;
 	case 0x40000DD:
-		return (u8)(DMA3CNT.raw >> 8);
+		return 0;
 	case 0x40000DE:
 		return (u8)(DMA3CNT.raw >> 16);
 	case 0x40000DF:
@@ -344,11 +344,11 @@ void GBADMA::writeIO(u32 address, u8 value) {
 		DMA0CNT.raw = (DMA0CNT.raw & 0xFFFF00FF) | ((value & 0x3F) << 8);
 		break;
 	case 0x40000BA:
-		DMA0CNT.raw = (DMA0CNT.raw & 0xFF00FFFF) | (value << 16);
+		DMA0CNT.raw = (DMA0CNT.raw & 0xFF00FFFF) | ((value & 0xE0) << 16);
 		break;
 	case 0x40000BB:
 		oldEnable = DMA0CNT.enable;
-		DMA0CNT.raw = (DMA0CNT.raw & 0x00FFFFFF) | (value << 24);
+		DMA0CNT.raw = (DMA0CNT.raw & 0x00FFFFFF) | ((value & 0xF7) << 24);
 
 		if ((value & 0x80) && !oldEnable) {
 			internalDMA0SAD = DMA0SAD;
@@ -392,11 +392,11 @@ void GBADMA::writeIO(u32 address, u8 value) {
 		DMA1CNT.raw = (DMA1CNT.raw & 0xFFFF00FF) | ((value & 0x3F) << 8);
 		break;
 	case 0x40000C6:
-		DMA1CNT.raw = (DMA1CNT.raw & 0xFF00FFFF) | (value << 16);
+		DMA1CNT.raw = (DMA1CNT.raw & 0xFF00FFFF) | ((value & 0xE0) << 16);
 		break;
 	case 0x40000C7:
 		oldEnable = DMA1CNT.enable;
-		DMA1CNT.raw = (DMA1CNT.raw & 0x00FFFFFF) | (value << 24);
+		DMA1CNT.raw = (DMA1CNT.raw & 0x00FFFFFF) | ((value & 0xF7) << 24);
 
 		if ((value & 0x80) && !oldEnable) {
 			internalDMA1SAD = DMA1SAD;
@@ -440,11 +440,11 @@ void GBADMA::writeIO(u32 address, u8 value) {
 		DMA2CNT.raw = (DMA2CNT.raw & 0xFFFF00FF) | ((value & 0x3F) << 8);
 		break;
 	case 0x40000D2:
-		DMA2CNT.raw = (DMA2CNT.raw & 0xFF00FFFF) | (value << 16);
+		DMA2CNT.raw = (DMA2CNT.raw & 0xFF00FFFF) | ((value & 0xE0) << 16);
 		break;
 	case 0x40000D3:
 		oldEnable = DMA2CNT.enable;
-		DMA2CNT.raw = (DMA2CNT.raw & 0x00FFFFFF) | (value << 24);
+		DMA2CNT.raw = (DMA2CNT.raw & 0x00FFFFFF) | ((value & 0xF7) << 24);
 
 		if ((value & 0x80) && !oldEnable) {
 			internalDMA2SAD = DMA2SAD;
@@ -488,7 +488,7 @@ void GBADMA::writeIO(u32 address, u8 value) {
 		DMA3CNT.raw = (DMA3CNT.raw & 0xFFFF00FF) | (value << 8);
 		break;
 	case 0x40000DE:
-		DMA3CNT.raw = (DMA3CNT.raw & 0xFF00FFFF) | (value << 16);
+		DMA3CNT.raw = (DMA3CNT.raw & 0xFF00FFFF) | ((value & 0xE0) << 16);
 		break;
 	case 0x40000DF:
 		oldEnable = DMA3CNT.enable;

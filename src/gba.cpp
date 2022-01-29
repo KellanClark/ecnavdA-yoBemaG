@@ -1,6 +1,7 @@
 
 #include "gba.hpp"
 #include "scheduler.hpp"
+#include <cstddef>
 #include <cstdio>
 
 #define toPage(x) (x >> 15)
@@ -180,7 +181,7 @@ void GameBoyAdvance::save() {
 
 template <typename T>
 T GameBoyAdvance::openBus(u32 address) {
-	return (address <= 0x3FFF) ? (T)biosOpenBusValue : (T)openBusValue;
+	return (T)(((address <= 0x3FFF) ? biosOpenBusValue : openBusValue) >> ((sizeof(T) == 1) ? ((address & 3) * 8) : 0));
 }
 template u8 GameBoyAdvance::openBus<u8>(u32);
 template u16 GameBoyAdvance::openBus<u16>(u32);
@@ -206,14 +207,14 @@ u32 GameBoyAdvance::read(u32 address) {
 			case toPage(0x4000000): // I/O
 				// Split everything into u8
 				if (sizeof(T) == 4) {
-					u32 val = read<u8>(address++);
-					val |= read<u8>(address++) << 8;
-					val |= read<u8>(address++) << 16;
-					val |= read<u8>(address) << 24;
+					u32 val = read<u8>((address & ~3) | 0);
+					val |= read<u8>((address & ~3) | 1) << 8;
+					val |= read<u8>((address & ~3) | 2) << 16;
+					val |= read<u8>((address & ~3) | 3) << 24;
 					return val;
 				} else if (sizeof(T) == 2) {
-					u16 val = read<u8>(address++);
-					val |= read<u8>(address) << 8;
+					u16 val = read<u8>((address & ~1) | 0);
+					val |= read<u8>((address & ~1) | 1) << 8;
 					return val;
 				}
 
@@ -249,6 +250,9 @@ u32 GameBoyAdvance::read(u32 address) {
 					return (u8)(cpu.IF >> 8);
 				case 0x208:
 					return (u8)cpu.IME;
+				
+				default:
+					return openBus<u8>(address);
 				}
 				break;
 			case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
@@ -312,7 +316,7 @@ u32 GameBoyAdvance::read(u32 address) {
 			}
 			break;
 		}
-	} else {
+	} else if (sizeof(T) == 4) {
 		newOpenBus = val;
 	}
 	if (cpu.reg.R[15] < 0x2000000) {

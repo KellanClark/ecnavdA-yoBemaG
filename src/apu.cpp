@@ -225,16 +225,16 @@ u8 GBAAPU::readIO(u32 address) {
 	case 0x4000067:
 		return 0;
 	case 0x4000068:
-		return (u8)channel2.SOUND2CNT_L;
+		return (u8)(channel2.SOUND2CNT_L & 0xC0);
 	case 0x4000069:
 		return (u8)(channel2.SOUND2CNT_L >> 8);
 	case 0x400006A:
 	case 0x400006B:
 		return 0;
 	case 0x400006C:
-		return (u8)channel2.SOUND2CNT_H;
+		return (u8)(channel2.SOUND2CNT_H & 0x00);
 	case 0x400006D:
-		return (u8)(channel2.SOUND2CNT_H >> 8);
+		return (u8)((channel2.SOUND2CNT_H >> 8) & 0x40);
 	case 0x400006E:
 	case 0x400006F:
 		return 0;
@@ -316,7 +316,7 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 	case 0x400006C:
 		channel2.SOUND2CNT_H = (channel2.SOUND2CNT_H & 0xFF00) | value;
 		break;
-	case 0x400006B:
+	case 0x400006D:
 		if (value & 0x80) {
 			if (!channel2.lengthCounter)
 				channel2.lengthCounter = 64;
@@ -329,7 +329,7 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 		channel2.SOUND2CNT_H = (channel2.SOUND2CNT_H & 0x00FF) | (value << 8);
 		break;
 	case 0x4000080:
-		soundControl.SOUNDCNT_L = (soundControl.SOUNDCNT_L & 0xFF00) | value;
+		soundControl.SOUNDCNT_L = (soundControl.SOUNDCNT_L & 0xFF00) | (value & 0x77);
 		soundControl.volumeFloatR = (float)soundControl.outRVolume / 7;
 		soundControl.volumeFloatL = (float)soundControl.outLVolume / 7;
 		break;
@@ -337,7 +337,7 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 		soundControl.SOUNDCNT_L = (soundControl.SOUNDCNT_L & 0x00FF) | (value << 8);
 		break;
 	case 0x4000082:
-		soundControl.SOUNDCNT_H = (soundControl.SOUNDCNT_H & 0xFF00) | value;
+		soundControl.SOUNDCNT_H = (soundControl.SOUNDCNT_H & 0xFF00) | (value & 0x0F);
 		break;
 	case 0x4000083:
 		soundControl.SOUNDCNT_H = (soundControl.SOUNDCNT_H & 0x00FF) | (value << 8);
