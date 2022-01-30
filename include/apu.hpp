@@ -179,8 +179,7 @@ public:
 		};
 		union {
 			struct {
-				u16 : 1;
-				u16 biasLevel : 9;
+				u16 biasLevel : 10;
 				u16 : 4;
 				u16 soundResolution : 2;
 			};

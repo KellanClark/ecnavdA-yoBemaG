@@ -418,10 +418,10 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 		soundControl.SOUNDCNT_X = (value & 0x80);
 		break;
 	case 0x4000088:
-		soundControl.SOUNDBIAS = (soundControl.SOUNDBIAS & 0xFF00) | value;
+		soundControl.SOUNDBIAS = (soundControl.SOUNDBIAS & 0xFF00) | (value & 0xFE);
 		break;
 	case 0x4000089:
-		soundControl.SOUNDBIAS = (soundControl.SOUNDBIAS & 0x00FF) | (value << 8);
+		soundControl.SOUNDBIAS = (soundControl.SOUNDBIAS & 0x00FF) | ((value & 0xC3) << 8);
 		break;
 	case 0x40000A0:
 	case 0x40000A1:
