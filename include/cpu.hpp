@@ -56,7 +56,8 @@ public:
 
 	bool pauseCpu;
 	std::atomic<bool> running;
-	std::atomic<bool> traceInstructions;
+	bool traceInstructions;
+	bool logInterrupts;
 	std::string previousLogLine;
 };
 

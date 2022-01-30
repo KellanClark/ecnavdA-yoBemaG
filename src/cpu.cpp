@@ -7,6 +7,7 @@
 GBACPU::GBACPU(GameBoyAdvance& bus_) : ARM7TDMI(bus_) {
 	pauseCpu = false;
 	traceInstructions = false;
+	logInterrupts = false;
 
 	reset();
 }
@@ -59,6 +60,29 @@ void GBACPU::run() { // Emulator thread is run from here
 
 void GBACPU::requestInterrupt(irqType bit) {
 	IF |= bit;
+
+	if (logInterrupts) {
+		bus.log << "Interrupt requested: ";
+
+		switch (bit) {
+		case IRQ_VBLANK: bus.log << "VBlank"; break;
+		case IRQ_HBLANK: bus.log << "HBlank"; break;
+		case IRQ_VCOUNT: bus.log << "VCount"; break;
+		case IRQ_TIMER0: bus.log << "Timer 0"; break;
+		case IRQ_TIMER1: bus.log << "Timer 1"; break;
+		case IRQ_TIMER2: bus.log << "Timer 2"; break;
+		case IRQ_TIMER3: bus.log << "Timer 3"; break;
+		case IRQ_COM: bus.log << "Serial"; break;
+		case IRQ_DMA0: bus.log << "DMA 0"; break;
+		case IRQ_DMA1: bus.log << "DMA 1"; break;
+		case IRQ_DMA2: bus.log << "DMA 2"; break;
+		case IRQ_DMA3: bus.log << "DMA 3"; break;
+		case IRQ_KEYPAD: bus.log << "Keypad"; break;
+		case IRQ_GAMEPAK: bus.log << "Gamepak"; break;
+		}
+
+		bus.log << "\n";
+	}
 }
 
 void GBACPU::stopEvent(void *object) {

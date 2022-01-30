@@ -550,6 +550,8 @@ void systemLogWindow() {
 
 	ImGui::Checkbox("Trace Instructions", (bool *)&GBA.cpu.traceInstructions);
 	ImGui::SameLine();
+	ImGui::Checkbox("Log Interrupts", (bool *)&GBA.cpu.logInterrupts);
+	ImGui::SameLine();
 	ImGui::Checkbox("Log Flash Commands", (bool *)&GBA.logFlash);
 	ImGui::SameLine();
 	ImGui::Checkbox("Log DMAs", (bool *)&GBA.dma.logDma);
