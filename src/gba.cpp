@@ -131,10 +131,10 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	saveFileStream.seekg(0, std::ios::beg);
 
 	// Get save type/size
-	saveType = SRAM_32K;
-	sram.resize(32 * 1024);
-	//saveType = FLASH_128K;
-	//sram.resize(128 * 1024);
+	//saveType = SRAM_32K;
+	//sram.resize(32 * 1024);
+	saveType = FLASH_128K;
+	sram.resize(128 * 1024);
 	char eeprom8KStr[] = "EEPROM_V";
 	if (searchForString((char *)romBuff.data(), romBuff.size(), eeprom8KStr, sizeof(eeprom8KStr) - 1)) {
 		saveType = EEPROM_8K;
@@ -271,14 +271,14 @@ u32 GameBoyAdvance::read(u32 address) {
 						val *= 0x01010101;
 					}
 				} else if (saveType == FLASH_128K) {
-					if (flashChipId && ((address & 0xFFFF) < 2)) { // Read chip ID instead of data
-						if ((address & 0xFFFF) == 2) {
-							return 0x62;
-						} else {
-							return 0x13;
-						}
+					offset = address & 0xFFFF;
+					if (flashChipId && (offset == 0)) { [[unlikely]] // Read chip ID instead of data
+						val = 0x62;
+					} else if (flashChipId && (offset == 1)) { [[unlikely]]
+						val = 0x13;
+					} else {
+						val = sram[flashBank | (address & 0xFFFF)];
 					}
-					val = sram[flashBank | (address & 0xFFFF)];
 
 					if (sizeof(T) == 2) {
 						val *= 0x0101;
@@ -379,7 +379,7 @@ void GameBoyAdvance::write(u32 address, T value) {
 					break;
 
 				case 0x132: // Joypad
-					KEYCNT = (KEYCNT & 0xFF00) | value;
+					KEYCNT = (KEYCNT & 0xFF00) | value; // TODO
 					break;
 				case 0x133:
 					KEYCNT = (KEYCNT & 0x00FF) | (value << 8);
