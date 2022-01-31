@@ -105,6 +105,40 @@ public:
 	struct {
 		union {
 			struct {
+				u16 : 5;
+				u16 dimension : 1;
+				u16 selectedBank : 1;
+				u16 dacOn : 1;
+				u16 : 8;
+			};
+			u16 SOUND3CNT_L; // 0x4000070
+		};
+		union {
+			struct {
+				u16 soundLength : 8;
+				u16 : 5;
+				u16 volume : 2;
+				u16 forceVolume : 1;
+			};
+			u16 SOUND3CNT_H; // 0x4000072
+		};
+		union {
+			struct {
+				u16 frequency : 11;
+				u16 : 3;
+				u16 consecutiveSelection : 1;
+				u16 initial : 1;
+			};
+			u16 SOUND3CNT_X; // 0x4000074
+		};
+		u8 waveMem[32 * 2]; // 0x4000090 - 0x400009F
+		unsigned int waveMemIndex;
+		int frequencyTimer;
+		int lengthCounter;
+	} channel3;
+	struct {
+		union {
+			struct {
 				u16 soundLength : 6;
 				u16 : 2;
 				u16 envelopeSweepNum : 3;

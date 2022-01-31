@@ -67,6 +67,13 @@ void GBAAPU::tickFrameSequencer() {
 				}
 			}
 		}
+		if (channel3.consecutiveSelection) {
+			if (channel3.lengthCounter) {
+				if ((--channel3.lengthCounter) == 0) {
+					soundControl.ch3On = false;
+				}
+			}
+		}
 		if (channel4.consecutiveSelection) {
 			if (channel4.lengthCounter) {
 				if ((--channel4.lengthCounter) == 0) {
@@ -156,6 +163,14 @@ void GBAAPU::generateSample() {
 			channel2.frequencyTimer = (2048 - channel2.frequency) * 4;
 			channel2.waveIndex = (channel2.waveIndex + 1) & 7;
 		}
+		if (--channel3.frequencyTimer <= 0) {
+			channel3.frequencyTimer = (2048 - channel3.frequency) * 2;
+			if (channel3.dimension) { // One large bank
+				channel3.waveMemIndex = (channel3.waveMemIndex + 1) & 0x3F;
+			} else { // Separate banks
+				channel3.waveMemIndex = (channel3.selectedBank << 5) | ((channel3.waveMemIndex + 1) & 0x1F);
+			}
+		}
 		if (--channel4.frequencyTimer <= 0) {
 			if (channel4.divideRatio) {
 				channel4.frequencyTimer = channel4.divideRatio << (channel4.shiftClockFrequency + 4);
@@ -176,20 +191,18 @@ void GBAAPU::generateSample() {
 	float ch2Sample = ch2OverrideEnable * soundControl.ch2On * (((channel2.currentVolume * squareWaveDutyCycles[channel2.waveDuty][channel2.waveIndex]) / 7.5) - 1.0f) * ((float)(soundControl.psgVolume + 1) / 4);
 	i16 ch2SampleR = ch2Sample * soundControl.ch2outR * soundControl.volumeFloatR * 0x7F;
 	i16 ch2SampleL = ch2Sample * soundControl.ch2outL * soundControl.volumeFloatL * 0x7F;
-	float ch3Sample = ch3OverrideEnable * soundControl.ch3On * (0) * ((float)(soundControl.psgVolume + 1) / 4);
+	float ch3Sample = ch3OverrideEnable * soundControl.ch3On * channel3.dacOn * (((~channel3.waveMem[channel3.waveMemIndex] & 0xF) / 7.5) - 1.0f) * (((channel3.volume ? (1 / (float)(1 << (channel3.volume - 1))) : 0) * !channel3.forceVolume) + ((float)channel3.forceVolume * 0.75)) * ((float)(soundControl.psgVolume + 1) / 4);
 	i16 ch3SampleR = ch3Sample * soundControl.ch3outR * soundControl.volumeFloatR * 0x7F;
 	i16 ch3SampleL = ch3Sample * soundControl.ch3outL * soundControl.volumeFloatL * 0x7F;
-	float ch4Sample = ch4OverrideEnable * soundControl.ch4On * (((channel4.currentVolume * ((~channel4.lfsr) & 1)) / 7.5) - 1.0f) * ((float)(soundControl.psgVolume + 1) / 4);
+	float ch4Sample = ch4OverrideEnable * soundControl.ch4On * (((channel4.currentVolume * (~channel4.lfsr & 1)) / 7.5) - 1.0f) * ((float)(soundControl.psgVolume + 1) / 4);
 	i16 ch4SampleR = ch4Sample * soundControl.ch4outR * soundControl.volumeFloatR * 0x7F;
 	i16 ch4SampleL = ch4Sample * soundControl.ch4outL * soundControl.volumeFloatL * 0x7F;
 	float chASample = chAOverrideEnable * (channelA.currentSample * ((float)(soundControl.chAVolume + 1) / 2));
 	i16 chASampleR = chASample * soundControl.chAoutR * 0x1FF;
 	i16 chASampleL = chASample * soundControl.chAoutL * 0x1FF;
-	//printf("%d, %d\n", soundControl.chAoutR, soundControl.chAoutL);
 	float chBSample = chBOverrideEnable * (channelB.currentSample * ((float)(soundControl.chBVolume + 1) / 2));
 	i16 chBSampleR = chBSample * soundControl.chBoutR * 0x1FF;
 	i16 chBSampleL = chBSample * soundControl.chBoutL * 0x1FF;
-	//printf("%d %d %f  %f  %d, %d\n", channel2.waveDuty, channel2.waveIndex, squareWaveDutyCycles[channel2.waveDuty][channel2.waveIndex], ch2Sample, ch2SampleR, ch2SampleL);
 
 	if (soundControl.allOn) {
 		sampleBuffer[sampleBufferIndex] = std::clamp(ch1SampleR + ch2SampleR + ch3SampleR + ch4SampleR + chASampleR + chBSampleR + soundControl.biasLevel, 0, 0x3FF);
@@ -269,6 +282,21 @@ u8 GBAAPU::readIO(u32 address) {
 	case 0x400006E:
 	case 0x400006F:
 		return 0;
+	case 0x4000070:
+		return (u8)(channel3.SOUND3CNT_L & 0xE0);
+	case 0x4000071:
+		return (u8)((channel3.SOUND3CNT_L >> 8) & 0x00);
+	case 0x4000072:
+		return (u8)(channel3.SOUND3CNT_H & 0x00);
+	case 0x4000073:
+		return (u8)((channel3.SOUND3CNT_H >> 8) & 0xE0);
+	case 0x4000074:
+		return (u8)(channel3.SOUND3CNT_X & 0x00);
+	case 0x4000075:
+		return (u8)((channel3.SOUND3CNT_X >> 8) & 0x40);
+	case 0x4000076:
+	case 0x4000077:
+		return 0;
 	case 0x4000078:
 		return (u8)(channel4.SOUND4CNT_L & 0x00);
 	case 0x4000079:
@@ -305,6 +333,8 @@ u8 GBAAPU::readIO(u32 address) {
 	case 0x400008A:
 	case 0x400008B:
 		return 0;
+	case 0x4000090 ... 0x400009F:
+		return (channel3.waveMem[(!channel3.selectedBank << 5) | ((address & 0xF) << 1)] << 4) | channel3.waveMem[(!channel3.selectedBank << 5) | ((address & 0xF) << 1) | 1];
 	default:
 		return bus.openBus<u8>(address);
 	}
@@ -365,6 +395,33 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 
 		channel2.SOUND2CNT_H = (channel2.SOUND2CNT_H & 0x00FF) | (value << 8);
 		break;
+	case 0x4000070:
+		channel3.SOUND3CNT_L = (channel3.SOUND3CNT_L & 0xFF00) | (value & 0xE0);
+		if (!channel3.dacOn)
+			soundControl.ch3On = false;
+		break;
+	case 0x4000071:
+		channel3.SOUND3CNT_L = (channel3.SOUND3CNT_L & 0x00FF) | ((value & 0x00) << 8);
+		break;
+	case 0x4000072:
+		channel3.SOUND3CNT_H = (channel3.SOUND3CNT_H & 0xFF00) | value;
+		channel3.lengthCounter = 256 - channel3.soundLength;
+		break;
+	case 0x4000073:
+		channel3.SOUND3CNT_H = (channel3.SOUND3CNT_H & 0x00FF) | ((value & 0xE0) << 8);
+		break;
+	case 0x4000074:
+		channel3.SOUND3CNT_X = (channel3.SOUND3CNT_X & 0xFF00) | value;
+		break;
+	case 0x4000075:
+		if (value & 0x80) {
+			if (!channel3.lengthCounter)
+				channel3.lengthCounter = 256;
+			if (channel3.dacOn)
+				soundControl.ch3On = true;
+		}
+		channel3.SOUND3CNT_X = (channel3.SOUND3CNT_X & 0x00FF) | ((value & 0xC7) << 8);
+		break;
 	case 0x4000078:
 		channel4.SOUND4CNT_L = (channel4.SOUND4CNT_L & 0xFF00) | (value & 0x3F);
 		channel4.lengthCounter = 64 - channel4.soundLength;
@@ -422,6 +479,10 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 		break;
 	case 0x4000089:
 		soundControl.SOUNDBIAS = (soundControl.SOUNDBIAS & 0x00FF) | ((value & 0xC3) << 8);
+		break;
+	case 0x4000090 ... 0x400009F:
+		channel3.waveMem[(!channel3.selectedBank << 5) | ((address & 0xF) << 1)] = value >> 4;
+		channel3.waveMem[(!channel3.selectedBank << 5) | ((address & 0xF) << 1) | 1] = value & 0xF;
 		break;
 	case 0x40000A0:
 	case 0x40000A1:
