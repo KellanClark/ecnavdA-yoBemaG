@@ -307,12 +307,14 @@ void tilesWindow() {
 bool showPalette;
 void paletteWindow() {
 	static int selectedIndex;
+	u16 color = GBA.ppu.paletteColors[selectedIndex];
 
 	ImGui::Begin("Palettes", &showPalette);
 
 	ImGui::Text("Color Index:  %d", selectedIndex);
 	ImGui::Text("Memory Location:  0x%07X", 0x5000000 + (selectedIndex * 2));
-	ImGui::Text("Color Data:  0x%04X", GBA.ppu.paletteColors[selectedIndex]);
+	ImGui::Text("Color Data:  0x%04X", color);
+	ImGui::Text("(r, g, b):  (%d, %d, %d)", color & 0x1F, (color >> 5) & 0x1F, (color >> 10) & 0x1F);
 
 	ImGui::Text("Background");
 	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(1, 1));

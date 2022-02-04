@@ -27,6 +27,7 @@ public:
     u8 readIO(u32 address);
 	void writeIO(u32 address, u8 value);
 
+	std::mutex sampleBufferMutex;
 	std::atomic<int> sampleBufferIndex;
 	std::array<i16, 2048> sampleBuffer;
 

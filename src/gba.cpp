@@ -131,11 +131,11 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	saveFileStream.seekg(0, std::ios::beg);
 
 	// Get save type/size
-	//saveType = SRAM_32K;
-	//sram.resize(32 * 1024);
-	saveType = FLASH_128K;
-	sram.resize(128 * 1024);
-	char eeprom8KStr[] = "EEPROM_V";
+	saveType = SRAM_32K;
+	sram.resize(32 * 1024);
+	//saveType = FLASH_128K;
+	//sram.resize(128 * 1024);
+	/*char eeprom8KStr[] = "EEPROM_V";
 	if (searchForString((char *)romBuff.data(), romBuff.size(), eeprom8KStr, sizeof(eeprom8KStr) - 1)) {
 		saveType = EEPROM_8K;
 		sram.resize(8 * 1024);
@@ -159,7 +159,7 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	if (searchForString((char *)romBuff.data(), romBuff.size(), flash128KStr3, sizeof(flash128KStr3) - 1)) {
 		saveType = FLASH_128K;
 		sram.resize(128 * 1024);
-	}
+	}*/
 
 	saveFileStream.read(reinterpret_cast<char*>(sram.data()), sram.size());
 	saveFileStream.close();
@@ -250,6 +250,10 @@ u32 GameBoyAdvance::read(u32 address) {
 					return (u8)(cpu.IF >> 8);
 				case 0x208:
 					return (u8)cpu.IME;
+				case 0x209:
+				case 0x20A:
+				case 0x20B:
+					return 0;
 				
 				default:
 					return openBus<u8>(address);
@@ -382,7 +386,7 @@ void GameBoyAdvance::write(u32 address, T value) {
 					KEYCNT = (KEYCNT & 0xFF00) | value; // TODO
 					break;
 				case 0x133:
-					KEYCNT = (KEYCNT & 0x00FF) | (value << 8);
+					KEYCNT = (KEYCNT & 0x00FF) | ((value & 0xC3) << 8);
 					break;
 
 				case 0x200: // Interrupts

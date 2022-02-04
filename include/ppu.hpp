@@ -23,10 +23,11 @@ public:
 	static void hBlankEvent(void *object);
 	void hBlank();
 
-	void drawObjects();
+	void drawObjects(int priority);
 	template <int mode, int size> int calculateTilemapIndex(int x, int y);
 	template <int bgNum> void drawBg();
-	template <int bgNum> void drawBgAff();
+	template <int bgNum> void drawBgAffine();
+	template <int mode> void drawBgBitmap();
 	void drawScanline();
 
 	u8 readIO(u32 address);
@@ -42,7 +43,7 @@ public:
 		bool inWin1;
 		bool inWinOut;
 	};
-	Pixel lineBuffer[8][240];
+	bool winObjBuffer[240];
 	Pixel mergedBuffer[240];
 
 	// Internal registers
@@ -132,6 +133,7 @@ public:
 		};
 		u16 DISPCNT; // 0x4000000
 	};
+	bool greenSwap; // 0x4000002
 	union {
 		struct {
 			u16 vBlankFlag : 1;

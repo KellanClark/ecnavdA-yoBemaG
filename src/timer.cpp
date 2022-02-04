@@ -28,8 +28,7 @@ void GBATIMER::checkOverflow() {
 
 			TIM0D = initialTIM0D;
 			tim0Timestamp = systemEvents.currentTime;
-			if (!tim0Cascade)
-				systemEvents.addEvent((0x10000 - TIM0D) * (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1), &checkOverflowEvent, this);
+			systemEvents.addEvent((0x10000 - TIM0D) * (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1), &checkOverflowEvent, this);
 
 			bus.apu.onTimer(0);
 			previousOverflow = true;
@@ -102,7 +101,7 @@ template <int timer>
 u64 GBATIMER::getDValue() {
 	switch (timer) {
 	case 0:
-		return TIM0D + ((tim0Enable && !tim0Cascade) * ((systemEvents.currentTime - tim0Timestamp) / (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1)));
+		return TIM0D + (tim0Enable * ((systemEvents.currentTime - tim0Timestamp) / (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1)));
 	case 1:
 		return TIM1D + ((tim1Enable && !tim1Cascade) * ((systemEvents.currentTime - tim1Timestamp) / (tim1Frequency ? (16 << (2 * tim1Frequency)) : 1)));
 	case 2:
@@ -119,25 +118,33 @@ u8 GBATIMER::readIO(u32 address) {
 	case 0x4000101:
 		return (u8)(getDValue<0>() >> 8);
 	case 0x4000102:
-		return TIM0CNT;
+		return (u8)TIM0CNT;
+	case 0x4000103:
+		return 0;
 	case 0x4000104:
 		return (u8)getDValue<1>();
 	case 0x4000105:
 		return (u8)(getDValue<1>() >> 8);
 	case 0x4000106:
-		return TIM1CNT;
+		return (u8)TIM1CNT;
+	case 0x4000107:
+		return 0;
 	case 0x4000108:
 		return (u8)getDValue<2>();
 	case 0x4000109:
 		return (u8)(getDValue<2>() >> 8);
 	case 0x400010A:
-		return TIM2CNT;
+		return (u8)TIM2CNT;
+	case 0x400010B:
+		return 0;
 	case 0x400010C:
 		return (u8)getDValue<3>();
 	case 0x400010D:
 		return (u8)(getDValue<3>() >> 8);
 	case 0x400010E:
-		return TIM3CNT;
+		return (u8)TIM3CNT;
+	case 0x400010F:
+		return 0;
 	default:
 		return bus.openBus<u8>(address);
 	}
@@ -165,9 +172,9 @@ void GBATIMER::writeIO(u32 address, u8 value) {
 		if (!(value & 4) && (TIM0CNT & 4)) // Disabling cascade
 			tim0Timestamp = systemEvents.currentTime;
 
-		TIM0CNT = (value & 0xC7);
+		TIM0CNT = (value & 0xC3);
 
-		if (tim0Timestamp == systemEvents.currentTime && tim0Enable && !tim0Cascade)
+		if (tim0Timestamp == systemEvents.currentTime && tim0Enable)
 			systemEvents.addEvent((0x10000 - TIM0D) * (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1), &checkOverflowEvent, this);
 		break;
 	case 0x4000104:

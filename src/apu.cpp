@@ -85,7 +85,7 @@ void GBAAPU::tickFrameSequencer() {
 
 	// Tick Volume
 	if ((frameSequencerCounter & 7) == 7) {
-		if (channel1.periodTimer) {
+		if (channel1.envelopeSweepNum) {
 			if ((--channel1.periodTimer) == 0) {
 				channel1.periodTimer = channel1.envelopeSweepNum;
 				if (channel1.periodTimer == 0) {
@@ -98,7 +98,7 @@ void GBAAPU::tickFrameSequencer() {
 				}
 			}
 		}
-		if (channel2.periodTimer) {
+		if (channel2.envelopeSweepNum) {
 			if ((--channel2.periodTimer) == 0) {
 				channel2.periodTimer = channel2.envelopeSweepNum;
 				if (channel2.periodTimer == 0) {
@@ -111,7 +111,7 @@ void GBAAPU::tickFrameSequencer() {
 				}
 			}
 		}
-		if (channel4.periodTimer) {
+		if (channel4.envelopeSweepNum) {
 			if ((--channel4.periodTimer) == 0) {
 				channel4.periodTimer = channel4.envelopeSweepNum;
 				if (channel4.periodTimer == 0) {
@@ -153,6 +153,8 @@ void GBAAPU::sampleEvent(void *object) {
 }
 
 void GBAAPU::generateSample() {
+	sampleBufferMutex.lock();
+
 	// Tick old GB channels
 	for (int i = 0; i < (16777216 / 32768) / 4; i++) {
 		if (--channel1.frequencyTimer <= 0) {
@@ -220,6 +222,7 @@ void GBAAPU::generateSample() {
 		bus.cpu.running = false;
 
 	systemEvents.addEvent(16777216 / 32768, sampleEvent, this);
+	sampleBufferMutex.unlock();
 }
 
 void GBAAPU::onTimer(int timerNum) {

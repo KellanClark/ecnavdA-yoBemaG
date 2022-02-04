@@ -345,13 +345,14 @@ int main(int argc, char *argv[]) {
 }
 
 void audioCallback(void *userdata, uint8_t *stream, int len) {
+	GBA.apu.sampleBufferMutex.lock();
 	if (recordSound) {
 		wavFileData.insert(wavFileData.end(), GBA.apu.sampleBuffer.begin(), GBA.apu.sampleBuffer.begin() + GBA.apu.sampleBufferIndex);
 	}
 
 	memcpy(stream, &GBA.apu.sampleBuffer, len); // Copy samples to SDL's buffer
 	// If there aren't enough samples, repeat the last one
-	int realIndex = GBA.apu.sampleBufferIndex - 2;
+	int realIndex = (GBA.apu.sampleBufferIndex - 2) % 2048;
 	for (int i = GBA.apu.sampleBufferIndex; i < len / 2; i += 2) {
 		((u16 *)stream)[i] = GBA.apu.sampleBuffer[realIndex];
 		((u16 *)stream)[i + 1] = GBA.apu.sampleBuffer[realIndex + 1];
@@ -359,6 +360,7 @@ void audioCallback(void *userdata, uint8_t *stream, int len) {
 
 	GBA.apu.sampleBufferIndex = 0;
 	GBA.cpu.running = true;
+	GBA.apu.sampleBufferMutex.unlock();
 }
 
 int loadRom() {
