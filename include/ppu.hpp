@@ -23,6 +23,7 @@ public:
 	static void hBlankEvent(void *object);
 	void hBlank();
 
+	void calculateWinObj();
 	void drawObjects(int priority);
 	template <int mode, int size> int calculateTilemapIndex(int x, int y);
 	template <int bgNum> void drawBg();
@@ -93,13 +94,13 @@ public:
 	};
 	struct __attribute__ ((packed)) ObjectMatrix {
 		u16 u1, u2, u3;
-		u16 pa;
+		i16 pa;
 		u16 u4, u5, u6;
-		u16 pb;
+		i16 pb;
 		u16 u7, u8, u9;
-		u16 pc;
+		i16 pc;
 		u16 u10, u11, u12;
-		u16 pd;
+		i16 pd;
 	};
 
 	union {
@@ -129,7 +130,7 @@ public:
 			u16 screenDisplayObj : 1;
 			u16 window0DisplayFlag : 1;
 			u16 window1DisplayFlag : 1;
-			u16 objWindowDisplayFlag : 1;
+			u16 windowObjDisplayFlag : 1;
 		};
 		u16 DISPCNT; // 0x4000000
 	};
@@ -214,16 +215,16 @@ public:
 	u16 BG2VOFS; // 0x400001A
 	u16 BG3HOFS; // 0x400001C
 	u16 BG3VOFS; // 0x400001E
-	u16 BG2PA; // 0x4000020
-	u16 BG2PB; // 0x4000022
-	u16 BG2PC; // 0x4000024
-	u16 BG2PD; // 0x4000026
+	i16 BG2PA; // 0x4000020
+	i16 BG2PB; // 0x4000022
+	i16 BG2PC; // 0x4000024
+	i16 BG2PD; // 0x4000026
 	u32 BG2X; // 0x4000028
 	u32 BG2Y; // 0x400002C
-	u16 BG3PA; // 0x4000030
-	u16 BG3PB; // 0x4000032
-	u16 BG3PC; // 0x4000034
-	u16 BG3PD; // 0x4000036
+	i16 BG3PA; // 0x4000030
+	i16 BG3PB; // 0x4000032
+	i16 BG3PC; // 0x4000034
+	i16 BG3PD; // 0x4000036
 	u32 BG3X; // 0x4000038
 	u32 BG3Y; // 0x400003C
 	union {

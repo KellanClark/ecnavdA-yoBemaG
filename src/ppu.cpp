@@ -115,8 +115,15 @@ static const unsigned int objSizeArray[3][4][2] = {
 	{{8, 16}, {8, 32}, {16, 32}, {32, 64}}
 };
 
+inline void GBAPPU::calculateWinObj() {
+	drawObjects(5);
+}
+
 void GBAPPU::drawObjects(int priority) {
 	if (!screenDisplayObj)
+		return;
+	bool drawWin = priority == 5;
+	if (drawWin && !windowObjDisplayFlag)
 		return;
 
 	int tileRowAddress = 0;
@@ -124,10 +131,9 @@ void GBAPPU::drawObjects(int priority) {
 	u8 tileData = 0;
 
 	for (int objNo = 0; objNo < 128; objNo++) {
-		if ((objects[objNo].priority == priority) && (objects[objNo].objMode != 2)) {
-			Object *obj = &objects[objNo];
+		Object *obj = &objects[objNo];
+		if ((((obj->priority == priority) && (obj->gfxMode != 2)) || (drawWin && (obj->gfxMode == 2))) && (obj->objMode != 2)) {
 			ObjectMatrix mat = objectMatrices[obj->affineIndex];
-
 			unsigned int xSize = objSizeArray[obj->shape][obj->size][0];
 			unsigned int ySize = objSizeArray[obj->shape][obj->size][1];
 
@@ -138,10 +144,10 @@ void GBAPPU::drawObjects(int priority) {
 
 			float affX = 0;
 			float affY = 0;
-			float pa = (float)((i16)mat.pa) / 256;
-			float pb = (float)((i16)mat.pb) / 256;
-			float pc = (float)((i16)mat.pc) / 256;
-			float pd = (float)((i16)mat.pd) / 256;
+			float pa = (float)mat.pa / 256;
+			float pb = (float)mat.pb / 256;
+			float pc = (float)mat.pc / 256;
+			float pd = (float)mat.pd / 256;
 			if (obj->objMode == 1) { // Affine
 				affX = (pb * (y - ((float)ySize / 2))) + (pa * ((float)xSize / -2)) + ((float)xSize / 2);
 				affY = (pd * (y - ((float)ySize / 2))) + (pc * ((float)xSize / -2)) + ((float)ySize / 2);
@@ -209,30 +215,40 @@ void GBAPPU::drawObjects(int priority) {
 							}
 						}
 
-						Pixel *pix = &mergedBuffer[x];
-						pix->inWin0 = false;
-						pix->inWin1 = false;
-						pix->inWinOut = false;
+						if (drawWin) {
+							// Pixel is in object window if non-transparent and not in win0 or win1
+							if (tileData &&
+								!(window0DisplayFlag && (x >= win0Left) && (x < win0Right) && win0VertFits) &&
+								!(window1DisplayFlag && (x >= win1Left) && (x < win1Right) && win1VertFits)) {
+								winObjBuffer[x] = true;
+							}
+						} else {
+							Pixel *pix = &mergedBuffer[x];
+							pix->inWin0 = false;
+							pix->inWin1 = false;
+							pix->inWinOut = false;
 
-						if (window0DisplayFlag)
-							if ((x >= win0Left) && (x < win0Right) && win0VertFits)
-								pix->inWin0 = true;
-						if (window1DisplayFlag)
-							if ((x >= win1Left) && (x < win1Right) && win1VertFits)
-								pix->inWin1 = !pix->inWin0;
-						pix->inWinOut = !(pix->inWin0 || pix->inWin1);
+							if (window0DisplayFlag)
+								if ((x >= win0Left) && (x < win0Right) && win0VertFits)
+									pix->inWin0 = true;
+							if (window1DisplayFlag)
+								if ((x >= win1Left) && (x < win1Right) && win1VertFits)
+									pix->inWin1 = !pix->inWin0;
+							pix->inWinOut = !(pix->inWin0 || pix->inWin1 || winObjBuffer[x]);
 
-						if (tileData) {
-							if (window0DisplayFlag || window1DisplayFlag) {
-								if ((window0DisplayFlag && win0ObjEnable && pix->inWin0) ||
-									(window1DisplayFlag && win1ObjEnable && pix->inWin1) ||
-									(winOutObjEnable && pix->inWinOut)) {
+							if (tileData) {
+								if (window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) {
+									if ((window0DisplayFlag && win0ObjEnable && pix->inWin0) ||
+										(window1DisplayFlag && win1ObjEnable && pix->inWin1) ||
+										(windowObjDisplayFlag && winObjObjEnable && winObjBuffer[x]) ||
+										(winOutObjEnable && pix->inWinOut)) {
+										pix->priority = priority + 4;
+										pix->color = paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData];
+									}
+								} else {
 									pix->priority = priority + 4;
 									pix->color = paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData];
 								}
-							} else {
-								pix->priority = priority + 4;
-								pix->color = paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData];
 							}
 						}
 					}
@@ -410,12 +426,13 @@ void GBAPPU::drawBg() {
 		if (window1DisplayFlag)
 			if (win1HorzFits && win1VertFits)
 				pix->inWin1 = !pix->inWin0;
-		pix->inWinOut = !(pix->inWin0 || pix->inWin1);
+		pix->inWinOut = !(pix->inWin0 || pix->inWin1 || winObjBuffer[i]);
 
 		if (tileData) {
-			if (!(window0DisplayFlag || window1DisplayFlag) ||
+			if (!(window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) ||
 				(window0DisplayFlag && (WININ & winRegMask) && pix->inWin0) ||
 				(window1DisplayFlag && (WININ & (winRegMask << 8)) && pix->inWin1) ||
+				(windowObjDisplayFlag && (WINOUT & (winRegMask << 8)) && winObjBuffer[i]) ||
 				((WINOUT & winRegMask) && pix->inWinOut)) {
 				pix->priority = bgNum;
 				pix->color = paletteColors[(paletteBank * !bpp) | tileData];
@@ -445,8 +462,8 @@ void GBAPPU::drawBgAffine() {
 		mosaic = bg0Mosaic;
 		affX = internalBG2X;
 		affY = internalBG2Y;
-		pa = (float)((i16)BG2PA) / 256;
-		pc = (float)((i16)BG2PC) / 256;
+		pa = (float)BG2PA / 256;
+		pc = (float)BG2PC / 256;
 		winRegMask = 0x04;
 	} else if (bgNum == 3) {
 		if (!screenDisplayBg3) return;
@@ -457,8 +474,8 @@ void GBAPPU::drawBgAffine() {
 		mosaic = bg0Mosaic;
 		affX = internalBG3X;
 		affY = internalBG3Y;
-		pa = (float)((i16)BG3PA) / 256;
-		pc = (float)((i16)BG3PC) / 256;
+		pa = (float)BG3PA / 256;
+		pc = (float)BG3PC / 256;
 		winRegMask = 0x08;
 	}
 
@@ -500,12 +517,13 @@ void GBAPPU::drawBgAffine() {
 		if (window1DisplayFlag)
 			if (win1HorzFits && win1VertFits)
 				pix->inWin1 = !pix->inWin0;
-		pix->inWinOut = !(pix->inWin0 || pix->inWin1);
+		pix->inWinOut = !(pix->inWin0 || pix->inWin1 || winObjBuffer[i]);
 
 		if (tileData) {
-			if (!(window0DisplayFlag || window1DisplayFlag) ||
+			if (!(window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) ||
 				(window0DisplayFlag && (WININ & winRegMask) && pix->inWin0) ||
 				(window1DisplayFlag && (WININ & (winRegMask << 8)) && pix->inWin1) ||
+				(windowObjDisplayFlag && (WINOUT & (winRegMask << 8)) && winObjBuffer[i]) ||
 				((WINOUT & winRegMask) && pix->inWinOut)) {
 				pix->priority = bgNum;
 				pix->color = paletteColors[tileData];
@@ -519,8 +537,8 @@ void GBAPPU::drawBgBitmap() {
 	if (!screenDisplayBg2) return;
 	float affX = internalBG2X;
 	float affY = internalBG2Y;
-	float pa = (float)((i16)BG2PA) / 256;
-	float pc = (float)((i16)BG2PC) / 256;
+	float pa = (float)BG2PA / 256;
+	float pc = (float)BG2PC / 256;
 	bool win0HorzFits = win0Right < win0Left;
 	bool win1HorzFits = win1Right < win1Left;
 
@@ -572,14 +590,15 @@ void GBAPPU::drawBgBitmap() {
 		if (window1DisplayFlag)
 			if (win1HorzFits && win1VertFits)
 				pix->inWin1 = !pix->inWin0;
-		pix->inWinOut = !(pix->inWin0 || pix->inWin1);
+		pix->inWinOut = !(pix->inWin0 || pix->inWin1 || winObjBuffer[x]);
 
-		if (!(window0DisplayFlag || window1DisplayFlag) ||
+		if (!(window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) ||
 			(window0DisplayFlag && win0Bg2Enable && pix->inWin0) ||
 			(window1DisplayFlag && win1Bg2Enable && pix->inWin1) ||
+			(windowObjDisplayFlag && winObjBg2Enable && winObjBuffer[x]) ||
 			(winOutBg2Enable && pix->inWinOut)) {
 			pix->color = vramData;
-		pix->priority = bg2Priority;
+			pix->priority = bg2Priority;
 		}
 	}
 }
@@ -590,8 +609,11 @@ void GBAPPU::drawScanline() {
 		return;
 	}
 
-	for (int i = 0; i < 240; i++)
+	for (int i = 0; i < 240; i++) {
 		mergedBuffer[i].priority = -1;
+		winObjBuffer[i] = false;
+	}
+	calculateWinObj();
 
 	switch (bgMode) {
 	case 0:
@@ -652,10 +674,10 @@ void GBAPPU::drawScanline() {
 		}
 	}
 
-	internalBG2X += (float)((i16)BG2PB) / 256;
-	internalBG2Y += (float)((i16)BG2PD) / 256;
-	internalBG3X += (float)((i16)BG3PB) / 256;
-	internalBG3Y += (float)((i16)BG3PD) / 256;
+	internalBG2X += (float)BG2PB / 256;
+	internalBG2Y += (float)BG2PD / 256;
+	internalBG3X += (float)BG3PB / 256;
+	internalBG3Y += (float)BG3PD / 256;
 }
 
 u8 GBAPPU::readIO(u32 address) {
