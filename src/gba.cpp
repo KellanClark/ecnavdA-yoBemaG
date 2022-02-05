@@ -1,5 +1,6 @@
 
 #include "gba.hpp"
+#include "arm7tdmi.hpp"
 #include "scheduler.hpp"
 #include <cstddef>
 #include <cstdio>
@@ -207,56 +208,17 @@ u32 GameBoyAdvance::read(u32 address) {
 			case toPage(0x4000000): // I/O
 				// Split everything into u8
 				if (sizeof(T) == 4) {
-					u32 val = read<u8>((address & ~3) | 0);
-					val |= read<u8>((address & ~3) | 1) << 8;
-					val |= read<u8>((address & ~3) | 2) << 16;
-					val |= read<u8>((address & ~3) | 3) << 24;
+					u32 val = readIO((address & ~3) | 0);
+					val |= readIO((address & ~3) | 1) << 8;
+					val |= readIO((address & ~3) | 2) << 16;
+					val |= readIO((address & ~3) | 3) << 24;
 					return val;
 				} else if (sizeof(T) == 2) {
-					u16 val = read<u8>((address & ~1) | 0);
-					val |= read<u8>((address & ~1) | 1) << 8;
+					u16 val = readIO((address & ~1) | 0);
+					val |= readIO((address & ~1) | 1) << 8;
 					return val;
-				}
-
-				switch (offset) {
-				case 0x000 ... 0x055: // PPU
-					return ppu.readIO(address);
-				
-				case 0x060 ... 0x0A7: // APU
-					return apu.readIO(address);
-
-				case 0x0B0 ... 0x0DF: // DMA
-					return dma.readIO(address);
-				
-				case 0x100 ... 0x10F: // Timer
-					return timer.readIO(address);
-
-				case 0x130: // Joypad
-					return (u8)KEYINPUT;
-				case 0x131:
-					return (u8)(KEYINPUT >> 8);
-				case 0x132:
-					return (u8)KEYCNT;
-				case 0x133:
-					return (u8)(KEYCNT >> 8);
-
-				case 0x200: // Interrupts
-					return (u8)cpu.IE;
-				case 0x201:
-					return (u8)(cpu.IE >> 8);
-				case 0x202:
-					return (u8)cpu.IF;
-				case 0x203:
-					return (u8)(cpu.IF >> 8);
-				case 0x208:
-					return (u8)cpu.IME;
-				case 0x209:
-				case 0x20A:
-				case 0x20B:
-					return 0;
-				
-				default:
-					return openBus<u8>(address);
+				} else if (sizeof(T) == 1) {
+					return readIO(address);
 				}
 				break;
 			case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
@@ -341,6 +303,50 @@ template u32 GameBoyAdvance::read<u8>(u32);
 template u32 GameBoyAdvance::read<u16>(u32);
 template u32 GameBoyAdvance::read<u32>(u32);
 
+u8 GameBoyAdvance::readIO(u32 address) {
+	int offset = address & 0x7FFF;
+	switch (offset) {
+	case 0x000 ... 0x055: // PPU
+		return ppu.readIO(address);
+	
+	case 0x060 ... 0x0A7: // APU
+		return apu.readIO(address);
+
+	case 0x0B0 ... 0x0DF: // DMA
+		return dma.readIO(address);
+	
+	case 0x100 ... 0x10F: // Timer
+		return timer.readIO(address);
+
+	case 0x130: // Joypad
+		return (u8)KEYINPUT;
+	case 0x131:
+		return (u8)(KEYINPUT >> 8);
+	case 0x132:
+		return (u8)KEYCNT;
+	case 0x133:
+		return (u8)(KEYCNT >> 8);
+
+	case 0x200: // Interrupts
+		return (u8)cpu.IE;
+	case 0x201:
+		return (u8)(cpu.IE >> 8);
+	case 0x202:
+		return (u8)cpu.IF;
+	case 0x203:
+		return (u8)(cpu.IF >> 8);
+	case 0x208:
+		return (u8)cpu.IME;
+	case 0x209:
+	case 0x20A:
+	case 0x20B:
+		return 0;
+	
+	default:
+		return openBus<u8>(address);
+	}
+}
+
 template <typename T>
 void GameBoyAdvance::write(u32 address, T value) {
 	int page = (address & 0x0FFFFFFF) >> 15;
@@ -354,67 +360,18 @@ void GameBoyAdvance::write(u32 address, T value) {
 			switch (page) {
 			case toPage(0x4000000): // I/O
 				if (sizeof(T) == 4) {
-					write<u8>((address & ~3) | 0, (u8)value);
-					write<u8>((address & ~3) | 1, (u8)(value >> 8));
-					write<u8>((address & ~3) | 2, (u8)(value >> 16));
-					write<u8>((address & ~3) | 3, (u8)(value >> 24));
+					writeIO((address & ~3) | 0, (u8)value);
+					writeIO((address & ~3) | 1, (u8)(value >> 8));
+					writeIO((address & ~3) | 2, (u8)(value >> 16));
+					writeIO((address & ~3) | 3, (u8)(value >> 24));
 					return;
 				} else if (sizeof(T) == 2) {
-					write<u8>((address & ~1) | 0, (u8)value);
-					write<u8>((address & ~1) | 1, (u8)(value >> 8));
+					writeIO((address & ~1) | 0, (u8)value);
+					writeIO((address & ~1) | 1, (u8)(value >> 8));
 					return;
-				}
-
-				switch (offset) {
-				case 0x000 ... 0x055: // PPU
-					ppu.writeIO(address, value);
-					break;
-
-				case 0x060 ... 0x0A7: // APU
-					apu.writeIO(address, value);
-					break;
-
-				case 0x0B0 ... 0x0DF: // DMA
-					dma.writeIO(address, value);
-					break;
-
-				case 0x100 ... 0x10F: // Timer
-					timer.writeIO(address, value);
-					break;
-
-				case 0x132: // Joypad
-					KEYCNT = (KEYCNT & 0xFF00) | value; // TODO
-					break;
-				case 0x133:
-					KEYCNT = (KEYCNT & 0x00FF) | ((value & 0xC3) << 8);
-					break;
-
-				case 0x200: // Interrupts
-					cpu.IE = (cpu.IE & 0x3F00) | value;
-					break;
-				case 0x201:
-					cpu.IE = (cpu.IE & 0x00FF) | ((value & 0x3F) << 8);
-					break;
-				case 0x202:
-					cpu.IF = (cpu.IF & ~value) & 0x3FFF;
-					break;
-				case 0x203:
-					cpu.IF = (cpu.IF & ~(value << 8)) & 0x3FFF;
-					break;
-				case 0x208:
-					cpu.IME = (bool)value;
-					break;
-				case 0x209:
-				case 0x20A:
-				case 0x20B:
-					break;
-
-				case 0x301: // HALTCNT
-					cpu.halted = (bool)value;
-					break;
-				default:
-					//printf("Unknown I/O register write:  %07X  %02X\n", address, value);
-					break;
+				} else if (sizeof(T) == 1) {
+					writeIO(address, value);
+					return;
 				}
 				break;
 			case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
@@ -524,3 +481,58 @@ void GameBoyAdvance::write(u32 address, T value) {
 template void GameBoyAdvance::write<u8>(u32, u8);
 template void GameBoyAdvance::write<u16>(u32, u16);
 template void GameBoyAdvance::write<u32>(u32, u32);
+
+void GameBoyAdvance::writeIO(u32 address, u8 value) {
+	int offset = address & 0x7FFF;
+	switch (offset) {
+	case 0x000 ... 0x055: // PPU
+		ppu.writeIO(address, value);
+		break;
+
+	case 0x060 ... 0x0A7: // APU
+		apu.writeIO(address, value);
+		break;
+
+	case 0x0B0 ... 0x0DF: // DMA
+		dma.writeIO(address, value);
+		break;
+
+	case 0x100 ... 0x10F: // Timer
+		timer.writeIO(address, value);
+		break;
+
+	case 0x132: // Joypad
+		KEYCNT = (KEYCNT & 0xFF00) | value; // TODO
+		break;
+	case 0x133:
+		KEYCNT = (KEYCNT & 0x00FF) | ((value & 0xC3) << 8);
+		break;
+
+	case 0x200: // Interrupts
+		cpu.IE = (cpu.IE & 0x3F00) | value;
+		break;
+	case 0x201:
+		cpu.IE = (cpu.IE & 0x00FF) | ((value & 0x3F) << 8);
+		break;
+	case 0x202:
+		cpu.IF = (cpu.IF & ~value) & 0x3FFF;
+		break;
+	case 0x203:
+		cpu.IF = (cpu.IF & ~(value << 8)) & 0x3FFF;
+		break;
+	case 0x208:
+		cpu.IME = (bool)value;
+		break;
+	case 0x209:
+	case 0x20A:
+	case 0x20B:
+		break;
+
+	case 0x301: // HALTCNT
+		cpu.halted = (bool)value;
+		break;
+	default:
+		//printf("Unknown I/O register write:  %07X  %02X\n", address, value);
+		break;
+	}
+}

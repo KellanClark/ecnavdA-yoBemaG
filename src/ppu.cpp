@@ -40,6 +40,7 @@ void GBAPPU::reset() {
 	WIN0H = WIN1H = WIN0V = WIN1V = 0;
 	WININ = WINOUT = 0;
 	MOSAIC = 0;
+	BLDCNT = BLDALPHA = BLDY = 0;
 
 	systemEvents.addEvent(1232, lineStartEvent, this);
 	systemEvents.addEvent(960, hBlankEvent, this);
@@ -722,6 +723,14 @@ u8 GBAPPU::readIO(u32 address) {
 		return (u8)WINOUT;
 	case 0x400004B:
 		return (u8)(WINOUT >> 8);
+	case 0x4000050:
+		return (u8)BLDCNT;
+	case 0x4000051:
+		return (u8)(BLDCNT >> 8);
+	case 0x4000052:
+		return (u8)BLDALPHA;
+	case 0x4000053:
+		return (u8)(BLDALPHA >> 8);
 	default:
 		return bus.openBus<u8>(address);
 	}
@@ -953,22 +962,37 @@ void GBAPPU::writeIO(u32 address, u8 value) {
 		WIN1V = (WIN1V & 0x00FF) | (value << 8);
 		break;
 	case 0x4000048:
-		WININ = (WININ & 0x3F00) | (value & 0x3F);
+		WININ = (WININ & 0xFF00) | (value & 0x3F);
 		break;
 	case 0x4000049:
-		WININ = (WININ & 0x003F) | ((value & 0x3F) << 8);
+		WININ = (WININ & 0x00FF) | ((value & 0x3F) << 8);
 		break;
 	case 0x400004A:
-		WINOUT = (WINOUT & 0x3F00) | (value & 0x3F);
+		WINOUT = (WINOUT & 0xFF00) | (value & 0x3F);
 		break;
 	case 0x400004B:
-		WINOUT = (WINOUT & 0x003F) | ((value & 0x3F) << 8);
+		WINOUT = (WINOUT & 0x00FF) | ((value & 0x3F) << 8);
 		break;
 	case 0x400004C:
 		MOSAIC = (MOSAIC & 0xFF00) | value;
 		break;
 	case 0x400004D:
 		MOSAIC = (MOSAIC & 0x00FF) | (value << 8);
+		break;
+	case 0x4000050:
+		BLDCNT = (BLDCNT & 0xFF00) | value;
+		break;
+	case 0x4000051:
+		BLDCNT = (BLDCNT & 0x00FF) | ((value & 0x3F) << 8);
+		break;
+	case 0x4000052:
+		BLDALPHA = (BLDALPHA & 0xFF00) | (value & 0x1F);
+		break;
+	case 0x4000053:
+		BLDALPHA = (BLDALPHA & 0x00FF) | ((value & 0x1F) << 8);
+		break;
+	case 0x4000054:
+		BLDY = value & 0x1F;
 		break;
 	}
 }

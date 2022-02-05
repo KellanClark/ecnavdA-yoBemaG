@@ -48,7 +48,9 @@ public:
 
 	template <typename T> T openBus(u32 address);
 	template <typename T> u32 read(u32 address);
+	u8 readIO(u32 address);
 	template <typename T> void write(u32 address, T value);
+	void writeIO(u32 address, u8 value);
 
 	std::stringstream log;
 	bool logFlash;

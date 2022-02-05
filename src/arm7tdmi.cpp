@@ -111,7 +111,7 @@ void ARM7TDMI::cycle() {
 	//	unknownOpcodeArm(pipelineOpcode3, "BKPT");
 }
 
-bool ARM7TDMI::checkCondition(int condtionCode) {
+inline bool ARM7TDMI::checkCondition(int condtionCode) {
 	switch (condtionCode) {
 	case 0x0: return reg.flagZ;
 	case 0x1: return !reg.flagZ;

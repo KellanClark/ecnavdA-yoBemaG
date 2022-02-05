@@ -295,13 +295,47 @@ public:
 	};
 	union {
 		struct {
-			u32 bgMosH : 4;
-			u32 bgMosV : 4;
-			u32 objMosH : 4;
-			u32 objMosV : 4;
-			u32 : 16;
+			u16 bgMosH : 4;
+			u16 bgMosV : 4;
+			u16 objMosH : 4;
+			u16 objMosV : 4;
 		};
-		u32 MOSAIC; // 0x400004C
+		u16 MOSAIC; // 0x400004C
+	};
+	union {
+		struct {
+			u16 aBg0 : 1;
+			u16 aBg1 : 1;
+			u16 aBg2 : 1;
+			u16 aBg3 : 1;
+			u16 aObj : 1;
+			u16 aBd : 1;
+			u16 blendMode : 2;
+			u16 bBg0 : 1;
+			u16 bBg1 : 1;
+			u16 bBg2 : 1;
+			u16 bBg3 : 1;
+			u16 bObj : 1;
+			u16 bBd : 1;
+			u16 : 2;
+		};
+		u16 BLDCNT; // 0x4000050
+	};
+	union {
+		struct {
+			u16 evaCoefficient : 5;
+			u16 : 3;
+			u16 evbCoefficient : 5;
+			u16 : 3;
+		};
+		u16 BLDALPHA; // 0x4000052
+	};
+	union {
+		struct {
+			u16 evyCoefficient : 5;
+			u16 : 11;
+		};
+		u16 BLDY; // 0x4000054
 	};
 };
 
