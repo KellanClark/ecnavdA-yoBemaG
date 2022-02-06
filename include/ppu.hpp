@@ -23,7 +23,7 @@ public:
 	static void hBlankEvent(void *object);
 	void hBlank();
 
-	void calculateWinObj();
+	void calculateWindow();
 	void drawObjects(int priority);
 	template <int mode, int size> int calculateTilemapIndex(int x, int y);
 	template <int bgNum> void drawBg();
@@ -40,11 +40,11 @@ public:
 	struct Pixel {
 		int priority;
 		u16 color;
-		bool inWin0;
-		bool inWin1;
-		bool inWinOut;
 	};
+	bool win0Buffer[240];
+	bool win1Buffer[240];
 	bool winObjBuffer[240];
+	bool winOutBuffer[240];
 	Pixel mergedBuffer[240];
 
 	// Internal registers

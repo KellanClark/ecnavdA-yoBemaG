@@ -116,8 +116,26 @@ static const unsigned int objSizeArray[3][4][2] = {
 	{{8, 16}, {8, 32}, {16, 32}, {32, 64}}
 };
 
-inline void GBAPPU::calculateWinObj() {
+inline void GBAPPU::calculateWindow() {
+	bool win0HorzFits = win0Right < win0Left;
+	bool win1HorzFits = win1Right < win1Left;
+	for (int i = 0; i < 240; i++) {
+		if (win0Left == i)
+			win0HorzFits = true;
+		if (win0Right == i)
+			win0HorzFits = false;
+		if (win1Left == i)
+			win1HorzFits = true;
+		if (win1Right == i)
+			win1HorzFits = false;
+
+		win0Buffer[i] = window0DisplayFlag && win0HorzFits && win0VertFits;
+		win1Buffer[i] = window1DisplayFlag && (win1HorzFits && win1VertFits) && !win0Buffer[i];
+		winObjBuffer[i] = false;
+	}
 	drawObjects(5);
+	for (int i = 0; i < 240; i++)
+		winOutBuffer[i] = !(win0Buffer[i] || win1Buffer[i] || winObjBuffer[i]);
 }
 
 void GBAPPU::drawObjects(int priority) {
@@ -219,30 +237,18 @@ void GBAPPU::drawObjects(int priority) {
 						if (drawWin) {
 							// Pixel is in object window if non-transparent and not in win0 or win1
 							if (tileData &&
-								!(window0DisplayFlag && (x >= win0Left) && (x < win0Right) && win0VertFits) &&
-								!(window1DisplayFlag && (x >= win1Left) && (x < win1Right) && win1VertFits)) {
+								!(window0DisplayFlag && win0Buffer[x]) &&
+								!(window1DisplayFlag && win1Buffer[x])) {
 								winObjBuffer[x] = true;
 							}
 						} else {
 							Pixel *pix = &mergedBuffer[x];
-							pix->inWin0 = false;
-							pix->inWin1 = false;
-							pix->inWinOut = false;
-
-							if (window0DisplayFlag)
-								if ((x >= win0Left) && (x < win0Right) && win0VertFits)
-									pix->inWin0 = true;
-							if (window1DisplayFlag)
-								if ((x >= win1Left) && (x < win1Right) && win1VertFits)
-									pix->inWin1 = !pix->inWin0;
-							pix->inWinOut = !(pix->inWin0 || pix->inWin1 || winObjBuffer[x]);
-
 							if (tileData) {
 								if (window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) {
-									if ((window0DisplayFlag && win0ObjEnable && pix->inWin0) ||
-										(window1DisplayFlag && win1ObjEnable && pix->inWin1) ||
+									if ((window0DisplayFlag && win0ObjEnable && win0Buffer[x]) ||
+										(window1DisplayFlag && win1ObjEnable && win1Buffer[x]) ||
 										(windowObjDisplayFlag && winObjObjEnable && winObjBuffer[x]) ||
-										(winOutObjEnable && pix->inWinOut)) {
+										(winOutObjEnable && winOutBuffer[x])) {
 										pix->priority = priority + 4;
 										pix->color = paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData];
 									}
@@ -369,19 +375,7 @@ void GBAPPU::drawBg() {
 	if (mosaic)
 		y -= y % (bgMosV + 1);
 
-	bool win0HorzFits = win0Right < win0Left;
-	bool win1HorzFits = win1Right < win1Left;
-
 	for (int i = 0; i < 240; i++, x++) {
-		if (win0Left == i)
-			win0HorzFits = true;
-		if (win0Right == i)
-			win0HorzFits = false;
-		if (win1Left == i)
-			win1HorzFits = true;
-		if (win1Right == i)
-			win1HorzFits = false;
-
 		if (mergedBuffer[i].priority != -1)
 			continue;
 
@@ -417,24 +411,12 @@ void GBAPPU::drawBg() {
 		}
 
 		Pixel *pix = &mergedBuffer[i];
-		pix->inWin0 = false;
-		pix->inWin1 = false;
-		pix->inWinOut = false;
-
-		if (window0DisplayFlag)
-			if (win0HorzFits && win0VertFits)
-				pix->inWin0 = true;
-		if (window1DisplayFlag)
-			if (win1HorzFits && win1VertFits)
-				pix->inWin1 = !pix->inWin0;
-		pix->inWinOut = !(pix->inWin0 || pix->inWin1 || winObjBuffer[i]);
-
 		if (tileData) {
 			if (!(window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) ||
-				(window0DisplayFlag && (WININ & winRegMask) && pix->inWin0) ||
-				(window1DisplayFlag && (WININ & (winRegMask << 8)) && pix->inWin1) ||
+				(window0DisplayFlag && (WININ & winRegMask) && win0Buffer[i]) ||
+				(window1DisplayFlag && (WININ & (winRegMask << 8)) && win1Buffer[i]) ||
 				(windowObjDisplayFlag && (WINOUT & (winRegMask << 8)) && winObjBuffer[i]) ||
-				((WINOUT & winRegMask) && pix->inWinOut)) {
+				((WINOUT & winRegMask) && winOutBuffer[i])) {
 				pix->priority = bgNum;
 				pix->color = paletteColors[(paletteBank * !bpp) | tileData];
 			}
@@ -480,19 +462,7 @@ void GBAPPU::drawBgAffine() {
 		winRegMask = 0x08;
 	}
 
-	bool win0HorzFits = win0Right < win0Left;
-	bool win1HorzFits = win1Right < win1Left;
-
 	for (int i = 0; i < 240; i++, affX += pa, affY += pc) {
-		if (win0Left == i)
-			win0HorzFits = true;
-		if (win0Right == i)
-			win0HorzFits = false;
-		if (win1Left == i)
-			win1HorzFits = true;
-		if (win1Right == i)
-			win1HorzFits = false;
-
 		if (mergedBuffer[i].priority != -1)
 			continue;
 
@@ -508,24 +478,12 @@ void GBAPPU::drawBgAffine() {
 		u8 tileData = vram[tileAddress];
 
 		Pixel *pix = &mergedBuffer[i];
-		pix->inWin0 = false;
-		pix->inWin1 = false;
-		pix->inWinOut = false;
-
-		if (window0DisplayFlag)
-			if (win0HorzFits && win0VertFits)
-				pix->inWin0 = true;
-		if (window1DisplayFlag)
-			if (win1HorzFits && win1VertFits)
-				pix->inWin1 = !pix->inWin0;
-		pix->inWinOut = !(pix->inWin0 || pix->inWin1 || winObjBuffer[i]);
-
 		if (tileData) {
 			if (!(window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) ||
-				(window0DisplayFlag && (WININ & winRegMask) && pix->inWin0) ||
-				(window1DisplayFlag && (WININ & (winRegMask << 8)) && pix->inWin1) ||
+				(window0DisplayFlag && (WININ & winRegMask) && win0Buffer[i]) ||
+				(window1DisplayFlag && (WININ & (winRegMask << 8)) && win1Buffer[i]) ||
 				(windowObjDisplayFlag && (WINOUT & (winRegMask << 8)) && winObjBuffer[i]) ||
-				((WINOUT & winRegMask) && pix->inWinOut)) {
+				((WINOUT & winRegMask) && winOutBuffer[i])) {
 				pix->priority = bgNum;
 				pix->color = paletteColors[tileData];
 			}
@@ -540,19 +498,8 @@ void GBAPPU::drawBgBitmap() {
 	float affY = internalBG2Y;
 	float pa = (float)BG2PA / 256;
 	float pc = (float)BG2PC / 256;
-	bool win0HorzFits = win0Right < win0Left;
-	bool win1HorzFits = win1Right < win1Left;
 
 	for (int x = 0; x < 240; x++, affX += pa, affY += pc) {
-		if (win0Left == x)
-			win0HorzFits = true;
-		if (win0Right == x)
-			win0HorzFits = false;
-		if (win1Left == x)
-			win1HorzFits = true;
-		if (win1Right == x)
-			win1HorzFits = false;
-
 		if (mergedBuffer[x].priority != -1)
 			continue;
 
@@ -581,23 +528,11 @@ void GBAPPU::drawBgBitmap() {
 		}
 
 		Pixel *pix = &mergedBuffer[x];
-		pix->inWin0 = false;
-		pix->inWin1 = false;
-		pix->inWinOut = false;
-
-		if (window0DisplayFlag)
-			if (win0HorzFits && win0VertFits)
-				pix->inWin0 = true;
-		if (window1DisplayFlag)
-			if (win1HorzFits && win1VertFits)
-				pix->inWin1 = !pix->inWin0;
-		pix->inWinOut = !(pix->inWin0 || pix->inWin1 || winObjBuffer[x]);
-
 		if (!(window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) ||
-			(window0DisplayFlag && win0Bg2Enable && pix->inWin0) ||
-			(window1DisplayFlag && win1Bg2Enable && pix->inWin1) ||
+			(window0DisplayFlag && win0Bg2Enable && win0Buffer[x]) ||
+			(window1DisplayFlag && win1Bg2Enable && win1Buffer[x]) ||
 			(windowObjDisplayFlag && winObjBg2Enable && winObjBuffer[x]) ||
-			(winOutBg2Enable && pix->inWinOut)) {
+			(winOutBg2Enable && winOutBuffer[x])) {
 			pix->color = vramData;
 			pix->priority = bg2Priority;
 		}
@@ -612,9 +547,8 @@ void GBAPPU::drawScanline() {
 
 	for (int i = 0; i < 240; i++) {
 		mergedBuffer[i].priority = -1;
-		winObjBuffer[i] = false;
 	}
-	calculateWinObj();
+	calculateWindow();
 
 	switch (bgMode) {
 	case 0:
