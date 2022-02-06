@@ -54,17 +54,14 @@ void GameBoyAdvance::reset() {
 	timer.reset();
 }
 
-static bool searchForString(char *array, size_t arraySize, char *pattern, size_t patternSize) {
-	size_t i = -1;
-	while (i < arraySize) {
+bool GameBoyAdvance::searchRomForString(char *pattern, size_t patternSize) {
+	for (size_t i = 0; i < romBuff.size(); i++) {
 		size_t patternIndex = 0;
-		++i;
-		while (array[i] == pattern[patternIndex]) {
+		while (romBuff[i + patternIndex] == pattern[patternIndex]) {
 			if (patternIndex == (patternSize - 1))
 				return true;
 
 			++patternIndex;
-			++i;
 		}
 	}
 
@@ -134,33 +131,31 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	// Get save type/size
 	saveType = SRAM_32K;
 	sram.resize(32 * 1024);
-	//saveType = FLASH_128K;
-	//sram.resize(128 * 1024);
-	/*char eeprom8KStr[] = "EEPROM_V";
-	if (searchForString((char *)romBuff.data(), romBuff.size(), eeprom8KStr, sizeof(eeprom8KStr) - 1)) {
+	char eeprom8KStr[] = "EEPROM_V";
+	if (searchRomForString(eeprom8KStr, sizeof(eeprom8KStr) - 1)) {
 		saveType = EEPROM_8K;
 		sram.resize(8 * 1024);
 	}
 	char sram32KStr[] = "SRAM_V";
-	if (searchForString((char *)romBuff.data(), romBuff.size(), sram32KStr, sizeof(sram32KStr) - 1)) {
+	if (searchRomForString(sram32KStr, sizeof(sram32KStr) - 1)) {
 		saveType = SRAM_32K;
 		sram.resize(32 * 1024);
 	}
 	char flash128KStr1[] = "FLASH_V";
-	if (searchForString((char *)romBuff.data(), romBuff.size(), flash128KStr1, sizeof(flash128KStr1) - 1)) {
+	if (searchRomForString(flash128KStr1, sizeof(flash128KStr1) - 1)) {
 		saveType = FLASH_128K;
 		sram.resize(128 * 1024);
 	}
 	char flash128KStr2[] = "FLASH512_V";
-	if (searchForString((char *)romBuff.data(), romBuff.size(), flash128KStr2, sizeof(flash128KStr2) - 1)) {
+	if (searchRomForString(flash128KStr2, sizeof(flash128KStr2) - 1)) {
 		saveType = FLASH_128K;
 		sram.resize(128 * 1024);
 	}
 	char flash128KStr3[] = "FLASH1M_V";
-	if (searchForString((char *)romBuff.data(), romBuff.size(), flash128KStr3, sizeof(flash128KStr3) - 1)) {
+	if (searchRomForString(flash128KStr3, sizeof(flash128KStr3) - 1)) {
 		saveType = FLASH_128K;
 		sram.resize(128 * 1024);
-	}*/
+	}
 
 	saveFileStream.read(reinterpret_cast<char*>(sram.data()), sram.size());
 	saveFileStream.close();

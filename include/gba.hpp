@@ -43,6 +43,7 @@ public:
 	~GameBoyAdvance();
 	void reset();
 
+	bool searchRomForString(char *pattern, size_t patternSize);
 	int loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_);
 	void save();
 
