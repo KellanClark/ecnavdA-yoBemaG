@@ -915,9 +915,9 @@ bool ARM7TDMI::computeShift(u32 opcode, u32 *result) {
 	bool shifterCarry = false;
 	tmpIncrement = false;
 
-	if (dataTransfer && !iBit) {
+	if constexpr (dataTransfer && !iBit) {
 		shiftOperand = opcode & 0xFFF;
-	} else if (iBit && !dataTransfer) {
+	} else if constexpr (iBit && !dataTransfer) {
 		shiftOperand = opcode & 0xFF;
 		shiftAmount = (opcode & (0xF << 8)) >> 7;
 		if (shiftAmount == 0) {
@@ -1206,7 +1206,7 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 	}
 
 	// Compute common flags
-	if (sBit) {
+	if constexpr (sBit) {
 		reg.flagN = result >> 31; 
 		reg.flagZ = result == 0;
 		if ((operation < 2) || (operation == 8) || (operation == 9) || (operation >= 0xC)) { // Logical operations
@@ -1220,7 +1220,7 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 	if (tmpIncrement)
 		reg.R[15] -= 4;
 
-	if ((operation < 8) || (operation >= 0xC)) {
+	if constexpr ((operation < 8) || (operation >= 0xC)) {
 		reg.R[destinationReg] = result;
 		
 		if (destinationReg == 15) {
@@ -1231,8 +1231,9 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 			pipelineStage = 1;
 			incrementR15 = false;
 		}
-	} else if ((destinationReg == 15) && sBit) {
-		leaveMode();
+	} else if constexpr (sBit) {
+		if (destinationReg == 15)
+			leaveMode();
 	}
 }
 
@@ -1241,10 +1242,10 @@ void ARM7TDMI::multiply(u32 opcode) {
 	u32 destinationReg = (opcode >> 16) & 0xF;	
 
 	u32 result = reg.R[(opcode >> 8) & 0xF] * reg.R[opcode & 0xF];
-	if (accumulate)
+	if constexpr (accumulate)
 		result += reg.R[(opcode >> 12) & 0xF];
 	
-	if (sBit) {
+	if constexpr (sBit) {
 		reg.flagN = result >> 31; 
 		reg.flagZ = result == 0;
 	}
@@ -1252,7 +1253,7 @@ void ARM7TDMI::multiply(u32 opcode) {
 	reg.R[destinationReg] = result;
 
 	if (destinationReg == 15) {
-		if (sBit)
+		if constexpr (sBit)
 			leaveMode();
 
 		reg.R[15] &= reg.thumbMode ? ~1 : ~3;
@@ -1267,15 +1268,15 @@ void ARM7TDMI::multiplyLong(u32 opcode) {
 	u32 destinationRegHigh = (opcode >> 16) & 0xF;
 
 	u64 result;
-	if (signedMul) {
+	if constexpr (signedMul) {
 		result = (i64)((i32)reg.R[(opcode >> 8) & 0xF]) * (i64)((i32)reg.R[opcode & 0xF]);
 	} else {
 		result = (u64)reg.R[(opcode >> 8) & 0xF] * (u64)reg.R[opcode & 0xF];
 	}
-	if (accumulate)
+	if constexpr (accumulate)
 		result += ((u64)reg.R[destinationRegHigh] << 32) | (u64)reg.R[destinationRegLow];
 	
-	if (sBit) {
+	if constexpr (sBit) {
 		reg.flagN = result >> 63; 
 		reg.flagZ = result == 0;
 	}
@@ -1284,7 +1285,7 @@ void ARM7TDMI::multiplyLong(u32 opcode) {
 	reg.R[destinationRegHigh] = result >> 32;
 
 	if ((destinationRegLow == 15) || (destinationRegHigh == 15)) {
-		if (sBit)
+		if constexpr (sBit)
 			leaveMode();
 
 		reg.R[15] &= reg.thumbMode ? ~1 : ~3;
@@ -1299,7 +1300,7 @@ void ARM7TDMI::singleDataSwap(u32 opcode) {
 	u32 sourceRegister = opcode & 0xF;
 	u32 destinationRegister = (opcode >> 12) & 0xF;
 
-	if (byteWord) {
+	if constexpr (byteWord) {
 		u32 result = bus.read<u8>(address);
 		bus.write<u8>(address, (u8)reg.R[sourceRegister]);
 
@@ -1321,7 +1322,7 @@ void ARM7TDMI::singleDataSwap(u32 opcode) {
 template <bool targetPSR> void ARM7TDMI::psrLoad(u32 opcode) {
 	u32 destinationReg = (opcode >> 12) & 0xF;
 
-	if (targetPSR) {
+	if constexpr (targetPSR) {
 		switch (reg.mode) {
 		case MODE_FIQ: reg.R[destinationReg] = reg.SPSR_fiq; break;
 		case MODE_IRQ: reg.R[destinationReg] = reg.SPSR_irq; break;
@@ -1339,7 +1340,7 @@ template <bool targetPSR> void ARM7TDMI::psrStoreReg(u32 opcode) {
 	u32 operand = reg.R[opcode & 0xF];
 
 	u32 *target;
-	if (targetPSR) {
+	if constexpr (targetPSR) {
 		switch (reg.mode) {
 		case MODE_FIQ: target = &reg.SPSR_fiq; break;
 		case MODE_IRQ: target = &reg.SPSR_irq; break;
@@ -1360,7 +1361,7 @@ template <bool targetPSR> void ARM7TDMI::psrStoreReg(u32 opcode) {
 	}
 	if ((opcode & (1 << 16)) && reg.mode != MODE_USER) {
 		result |= operand & 0x000000FF;
-		if (!targetPSR)
+		if constexpr (!targetPSR)
 			bankRegisters((cpuMode)(operand & 0x1F), false);
 	} else {
 		result |= *target & 0x000000FF;
@@ -1375,7 +1376,7 @@ template <bool targetPSR> void ARM7TDMI::psrStoreImmediate(u32 opcode) {
 	operand = shiftAmount ? ((operand >> shiftAmount) | (operand << (32 - shiftAmount))) : operand;
 
 	u32 *target;
-	if (targetPSR) {
+	if constexpr (targetPSR) {
 		switch (reg.mode) {
 		case MODE_FIQ: target = &reg.SPSR_fiq; break;
 		case MODE_IRQ: target = &reg.SPSR_irq; break;
@@ -1396,7 +1397,7 @@ template <bool targetPSR> void ARM7TDMI::psrStoreImmediate(u32 opcode) {
 	}
 	if ((opcode & (1 << 16)) && reg.mode != MODE_USER) {
 		result |= operand & 0x000000FF;
-		if (!targetPSR)
+		if constexpr (!targetPSR)
 			bankRegisters((cpuMode)(operand & 0x1F), false);
 	} else {
 		result |= *target & 0x000000FF;
@@ -1426,15 +1427,15 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 		unknownOpcodeArm(opcode, "r15 Operand");
 
 	u32 offset;
-	if (immediateOffset) {
+	if constexpr (immediateOffset) {
 		offset = ((opcode & 0xF00) >> 4) | (opcode & 0xF);
 	} else {
 		offset = reg.R[opcode & 0xF];
 	}
 
 	u32 address = reg.R[baseRegister];
-	if (prePostIndex) {
-		if (upDown) {
+	if constexpr (prePostIndex) {
+		if constexpr (upDown) {
 			address += offset;
 		} else {
 			address -= offset;
@@ -1442,15 +1443,12 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 	}
 
 	u32 result = 0;
-	if (loadStore) {
-		switch (shBits) {
-		case 1: // LDRH
+	if constexpr (loadStore) {
+		if constexpr (shBits == 1) { // LDRH
 			result = bus.read<u16>(address);
-			break;
-		case 2: // LDRSB
+		} else if constexpr (shBits == 2) { // LDRSB
 			result = ((i32)((u32)bus.read<u8>(address) << 24) >> 24);
-			break;
-		case 3: // LDRSH
+		} else if constexpr (shBits == 3) { // LDRSH
 			result = bus.read<u16>(address);
 
 			if (address & 1) {
@@ -1458,33 +1456,24 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 			} else {
 				result = (i32)(result << 16) >> 16;
 			}
-			break;
-		default:
-			unknownOpcodeArm(opcode, "SH Bits");
-			return;
 		}
 	} else {
-		switch (shBits) {
-		case 1: // STRH
+		if constexpr (shBits == 1) { // STRH
 			bus.write<u16>(address, (u16)reg.R[srcDestRegister]);
-			break;
-		default:
-			unknownOpcodeArm(opcode, "SH Bits");
-			return;
 		}
 	}
 
-	if (writeBack && prePostIndex)
+	if constexpr (writeBack && prePostIndex)
 		reg.R[baseRegister] = address;
-	if (!prePostIndex) {
-		if (upDown) {
+	if constexpr (!prePostIndex) {
+		if constexpr (upDown) {
 			address += offset;
 		} else {
 			address -= offset;
 		}
 		reg.R[baseRegister] = address;
 	}
-	if (loadStore) {
+	if constexpr (loadStore) {
 		reg.R[srcDestRegister] = result;
 		if (srcDestRegister == 15) {
 			reg.R[15] &= ~3;
@@ -1507,8 +1496,8 @@ void ARM7TDMI::singleDataTransfer(u32 opcode) {
 	u32 address = reg.R[baseRegister];
 	if (tmpIncrement)
 		reg.R[15] -= 4;
-	if (prePostIndex) {
-		if (upDown) {
+	if constexpr (prePostIndex) {
+		if constexpr (upDown) {
 			address += offset;
 		} else {
 			address -= offset;
@@ -1516,31 +1505,31 @@ void ARM7TDMI::singleDataTransfer(u32 opcode) {
 	}
 
 	u32 result = 0;
-	if (loadStore) { // LDR
-		if (byteWord) {
+	if constexpr (loadStore) { // LDR
+		if constexpr (byteWord) {
 			result = bus.read<u8>(address);
 		} else {
 			result = bus.read<u32>(address);
 		}
 	} else { // STR
-		if (byteWord) {
+		if constexpr (byteWord) {
 			bus.write<u8>(address, reg.R[srcDestRegister] + (srcDestRegister == 15 ? 4 : 0));
 		} else {
 			bus.write<u32>(address, reg.R[srcDestRegister] + (srcDestRegister == 15 ? 4 : 0));
 		}
 	}
 
-	if (writeBack && prePostIndex)
+	if constexpr (writeBack && prePostIndex)
 		reg.R[baseRegister] = address;
-	if (!prePostIndex) {
-		if (upDown) {
+	if constexpr (!prePostIndex) {
+		if constexpr (upDown) {
 			address += offset;
 		} else {
 			address -= offset;
 		}
 		reg.R[baseRegister] = address;
 	}
-	if (loadStore) {
+	if constexpr (loadStore) {
 		reg.R[srcDestRegister] = result;
 		if (srcDestRegister == 15) {
 			reg.R[15] &= ~3;
@@ -1567,12 +1556,12 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 	u32 address = reg.R[baseRegister];
 	u32 writeBackAddress;
 	bool emptyRegList = (opcode & 0xFFFF) == 0;
-	if (upDown) {
+	if constexpr (upDown) {
 		writeBackAddress = address + std::popcount(opcode & 0xFFFF) * 4;
 		if (emptyRegList)
 			writeBackAddress += 0x40;
 
-		if (prePostIndex)
+		if constexpr (prePostIndex)
 			address += 4;
 	} else {
 		address -= std::popcount(opcode & 0xFFFF) * 4;
@@ -1580,18 +1569,18 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 			address -= 0x40;
 		writeBackAddress = address;
 
-		if (!prePostIndex)
+		if constexpr (!prePostIndex)
 			address += 4;
 	}
 
 	cpuMode oldMode = (cpuMode)reg.mode;
-	if (sBit) {
+	if constexpr (sBit) {
 		bankRegisters(MODE_USER, false);
 		reg.mode = MODE_USER;
 	}
 
-	if (loadStore) { // LDM
-		if (writeBack)
+	if constexpr (loadStore) { // LDM
+		if constexpr (writeBack)
 			reg.R[baseRegister] = writeBackAddress;
 
 		if (emptyRegList) {
@@ -1625,7 +1614,7 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 					address += 4;
 
 					if (firstReadWrite) {
-						if (writeBack)
+						if constexpr (writeBack)
 							reg.R[baseRegister] = writeBackAddress;
 						firstReadWrite = false;
 					}
@@ -1634,7 +1623,7 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 		}
 	}
 
-	if (sBit) {
+	if constexpr (sBit) {
 		bankRegisters(oldMode, false);
 		reg.mode = oldMode;
 
@@ -1645,16 +1634,18 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 		}
 	}
 
-	if ((baseRegister == 15) && loadStore && writeBack) {
-		pipelineStage = 1;
-		incrementR15 = false;
-		reg.R[15] &= reg.thumbMode ? ~1 : ~3;
+	if constexpr (loadStore && writeBack) {
+		if (baseRegister == 15) {
+			pipelineStage = 1;
+			incrementR15 = false;
+			reg.R[15] &= reg.thumbMode ? ~1 : ~3;
+		}
 	}
 }
 
 template <bool lBit>
 void ARM7TDMI::branch(u32 opcode) {
-	if (lBit)
+	if constexpr (lBit)
 		reg.R[14] = reg.R[15] - 4;
 	reg.R[15] += ((i32)((opcode & 0x00FFFFFF) << 8)) >> 6;
 
@@ -1986,8 +1977,8 @@ void ARM7TDMI::thumbLoadStoreRegOffset(u16 opcode) {
 	auto srcDestRegister = opcode & 0x7;
 	u32 address = reg.R[(opcode >> 3) & 7] + reg.R[offsetReg];
 
-	if (loadStore) {
-		if (byteWord) { // LDRB
+	if constexpr (loadStore) {
+		if constexpr (byteWord) { // LDRB
 			reg.R[srcDestRegister] = bus.read<u8>(address);
 		} else { // LDR
 			u32 result = bus.read<u32>(address);
@@ -1995,7 +1986,7 @@ void ARM7TDMI::thumbLoadStoreRegOffset(u16 opcode) {
 			reg.R[srcDestRegister] = result;
 		}
 	} else {
-		if (byteWord) {
+		if constexpr (byteWord) {
 			bus.write<u8>(address, (u8)reg.R[srcDestRegister]);
 		} else {
 			bus.write<u32>(address, reg.R[srcDestRegister]);
@@ -2031,7 +2022,7 @@ void ARM7TDMI::thumbLoadStoreSext(u16 opcode) {
 		break;
 	}
 
-	if (hsBits != 0)
+	if constexpr (hsBits != 0)
 		reg.R[srcDestRegister] = result;
 }
 
@@ -2040,8 +2031,8 @@ void ARM7TDMI::thumbLoadStoreImmediateOffset(u16 opcode) {
 	auto srcDestRegister = opcode & 0x7;
 	u32 address = reg.R[(opcode >> 3) & 7] + (byteWord ? offset : (offset << 2));
 
-	if (loadStore) {
-		if (byteWord) { // LDRB
+	if constexpr (loadStore) {
+		if constexpr (byteWord) { // LDRB
 			reg.R[srcDestRegister] = bus.read<u8>(address);
 		} else { // LDR
 			u32 result = bus.read<u32>(address);
@@ -2049,7 +2040,7 @@ void ARM7TDMI::thumbLoadStoreImmediateOffset(u16 opcode) {
 			reg.R[srcDestRegister] = result;
 		}
 	} else {
-		if (byteWord) {
+		if constexpr (byteWord) {
 			bus.write<u8>(address, (u8)reg.R[srcDestRegister]);
 		} else {
 			bus.write<u32>(address, reg.R[srcDestRegister]);
@@ -2062,7 +2053,7 @@ void ARM7TDMI::thumbLoadStoreHalfword(u16 opcode) {
 	auto srcDestRegister = opcode & 0x7;
 	u32 address = reg.R[(opcode >> 3) & 7] + (offset << 1);
 
-	if (loadStore) { // LDRH
+	if constexpr (loadStore) { // LDRH
 		u32 result = bus.read<u16>(address);
 
 		reg.R[srcDestRegister] = result;
@@ -2075,7 +2066,7 @@ template <bool loadStore, int destinationReg>
 void ARM7TDMI::thumbSpRelativeLoadStore(u16 opcode) {
 	u32 address = reg.R[13] + ((opcode & 0xFF) << 2);
 
-	if (loadStore) {
+	if constexpr (loadStore) {
 		reg.R[destinationReg] = bus.read<u32>(address);
 	} else {
 		bus.write<u32>(address, reg.R[destinationReg]);
@@ -2084,7 +2075,7 @@ void ARM7TDMI::thumbSpRelativeLoadStore(u16 opcode) {
 
 template <bool spPc, int destinationReg>
 void ARM7TDMI::thumbLoadAddress(u16 opcode) {
-	if (spPc) {
+	if constexpr (spPc) {
 		reg.R[destinationReg] = reg.R[13] + ((opcode & 0xFF) << 2);
 	} else {
 		reg.R[destinationReg] = (reg.R[15] & ~3) + ((opcode & 0xFF) << 2);
@@ -2095,7 +2086,7 @@ template <bool isNegative>
 void ARM7TDMI::thumbSpAddOffset(u16 opcode) {
 	u32 operand = (opcode & 0x7F) << 2;
 
-	if (isNegative) {
+	if constexpr (isNegative) {
 		reg.R[13] -= operand;
 	} else {
 		reg.R[13] += operand;
@@ -2108,7 +2099,7 @@ void ARM7TDMI::thumbPushPopRegisters(u16 opcode) {
 	u32 writeBackAddress;
 	bool emptyRegList = ((opcode & 0xFF) == 0) && !pcLr;
 
-	if (loadStore) { // POP/LDMIA!
+	if constexpr (loadStore) { // POP/LDMIA!
 		writeBackAddress = address + std::popcount((u32)opcode & 0xFF) * 4;
 		if (emptyRegList)
 			writeBackAddress += 0x40;
@@ -2127,7 +2118,7 @@ void ARM7TDMI::thumbPushPopRegisters(u16 opcode) {
 					address += 4;
 				}
 			}
-			if (pcLr) {
+			if constexpr (pcLr) {
 				reg.R[15] = bus.read<u32>(address) & ~1;
 				pipelineStage = 1;
 				incrementR15 = false;
@@ -2149,7 +2140,7 @@ void ARM7TDMI::thumbPushPopRegisters(u16 opcode) {
 					address += 4;
 				}
 			}
-			if (pcLr)
+			if constexpr (pcLr)
 				bus.write<u32>(address, reg.R[14]);
 
 			reg.R[13] = writeBackAddress;
@@ -2167,7 +2158,7 @@ void ARM7TDMI::thumbMultipleLoadStore(u16 opcode) {
 	if (emptyRegList)
 		writeBackAddress += 0x40;
 
-	if (loadStore) { // LDM
+	if constexpr (loadStore) { // LDM
 		if (!(opcode & (1 << baseReg)))
 			reg.R[baseReg] = writeBackAddress;
 
@@ -2231,7 +2222,7 @@ void ARM7TDMI::thumbUncondtionalBranch(u16 opcode) {
 
 template <bool lowHigh>
 void ARM7TDMI::thumbLongBranchLink(u16 opcode) {
-	if (lowHigh) {
+	if constexpr (lowHigh) {
 		u32 address = reg.R[14] + ((opcode & 0x7FF) << 1);
 		reg.R[14] = (reg.R[15] - 2) | 1;
 		reg.R[15] = address & ~1;
