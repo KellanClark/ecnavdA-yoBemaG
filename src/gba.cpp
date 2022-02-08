@@ -175,6 +175,52 @@ void GameBoyAdvance::save() {
 	saveFileStream.close();
 }
 
+u8 GameBoyAdvance::readDebug(u32 address) {
+	int page = (address & 0x0FFFFFFF) >> 15;
+	int offset = address & 0x7FFF;
+	void *pointer = pageTableRead[page];
+
+	u8 val = 0;
+	if (address <= 0x0FFFFFFF) { [[likely]]
+		if (pointer != NULL) {
+			std::memcpy(&val, (u8*)pointer + offset, 1);
+		} else {
+			switch (page) {
+			case toPage(0x0000000): // BIOS
+				if (address <= 0x3FFF) {
+					val = biosBuff[address];
+				}
+				break;
+			case toPage(0x4000000): // I/O
+				val = readIO(address);
+				break;
+			case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
+				val = ppu.paletteRam[offset & 0x3FF];
+				break;
+			case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
+				val = ppu.oam[offset & 0x3FF];
+				break;
+			case toPage(0xE000000) ... toPage(0x10000000) - 1:
+				if (saveType == SRAM_32K) {
+					val = sram[address & 0x7FFF];
+				} else if (saveType == FLASH_128K) {
+					offset = address & 0xFFFF;
+					if (flashChipId && (offset == 0)) { [[unlikely]] // Read chip ID instead of data
+						val = 0x62;
+					} else if (flashChipId && (offset == 1)) { [[unlikely]]
+						val = 0x13;
+					} else {
+						val = sram[flashBank | (address & 0xFFFF)];
+					}
+				}
+				break;
+			}
+		}
+	}
+
+	return val;
+}
+
 template <typename T>
 T GameBoyAdvance::openBus(u32 address) {
 	return (T)(((address <= 0x3FFF) ? biosOpenBusValue : openBusValue) >> ((sizeof(T) == 1) ? ((address & 3) * 8) : 0));
@@ -241,11 +287,11 @@ u32 GameBoyAdvance::read(u32 address) {
 						val = sram[flashBank | (address & 0xFFFF)];
 					}
 
-					if (sizeof(T) == 2) {
+					/*if (sizeof(T) == 2) {
 						val *= 0x0101;
 					} else if (sizeof(T) == 4) {
 						val *= 0x01010101;
-					}
+					}*/
 				}
 				break;
 			}

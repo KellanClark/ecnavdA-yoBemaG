@@ -659,7 +659,7 @@ void memEditorWindow() {
 }
 
 ImU8 memEditorRead(const ImU8* data, size_t off) {
-	return GBA.read<u8>((u32)off);
+	return GBA.readDebug((u32)off);
 }
 
 void memEditorWrite(ImU8* data, size_t off, ImU8 d) {

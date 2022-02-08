@@ -47,6 +47,7 @@ public:
 	int loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_);
 	void save();
 
+	u8 readDebug(u32 address);
 	template <typename T> T openBus(u32 address);
 	template <typename T> u32 read(u32 address);
 	u8 readIO(u32 address);
