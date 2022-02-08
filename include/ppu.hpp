@@ -24,9 +24,10 @@ public:
 	void hBlank();
 
 	void calculateWindow();
+	void addPixel(int x, u16 color, int layer, bool semiTransparent);
 	void drawObjects(int priority);
 	template <int mode, int size> int calculateTilemapIndex(int x, int y);
-	template <int bgNum> void drawBg();
+	template <int bgNum> void drawBgTile();
 	template <int bgNum> void drawBgAffine();
 	template <int mode> void drawBgBitmap();
 	void drawScanline();
@@ -38,8 +39,10 @@ public:
 	uint16_t framebuffer[160][240];
 
 	struct Pixel {
-		int priority;
+		int layer;
 		u16 color;
+		u16 oldColor;
+		bool semiTransparent;
 	};
 	bool win0Buffer[240];
 	bool win1Buffer[240];
@@ -337,6 +340,9 @@ public:
 		};
 		u16 BLDY; // 0x4000054
 	};
+	float evaCoefficientFloat;
+	float evbCoefficientFloat;
+	float evyCoefficientFloat;
 };
 
 #endif

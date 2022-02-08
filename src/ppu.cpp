@@ -41,6 +41,7 @@ void GBAPPU::reset() {
 	WININ = WINOUT = 0;
 	MOSAIC = 0;
 	BLDCNT = BLDALPHA = BLDY = 0;
+	evaCoefficientFloat = evbCoefficientFloat = evyCoefficientFloat = 0;
 
 	systemEvents.addEvent(1232, lineStartEvent, this);
 	systemEvents.addEvent(960, hBlankEvent, this);
@@ -110,12 +111,6 @@ void GBAPPU::hBlank() {
 	systemEvents.addEvent(1232, hBlankEvent, this);
 }
 
-static const unsigned int objSizeArray[3][4][2] = {
-	{{8, 8}, {16, 16}, {32, 32}, {64, 64}},
-	{{16, 8}, {32, 8}, {32, 16}, {64, 32}},
-	{{8, 16}, {8, 32}, {16, 32}, {32, 64}}
-};
-
 inline void GBAPPU::calculateWindow() {
 	bool win0HorzFits = win0Right < win0Left;
 	bool win1HorzFits = win1Right < win1Left;
@@ -137,6 +132,62 @@ inline void GBAPPU::calculateWindow() {
 	for (int i = 0; i < 240; i++)
 		winOutBuffer[i] = !(win0Buffer[i] || win1Buffer[i] || winObjBuffer[i]);
 }
+
+inline void GBAPPU::addPixel(int x, u16 color, int layer, bool semiTransparent) {
+	Pixel *pix = &mergedBuffer[x];
+	bool fitsWindow = !(window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) ||
+						(win0BldEnable && win0Buffer[x]) ||
+						(win1BldEnable && win1Buffer[x]) ||
+						(winObjBldEnable && winObjBuffer[x]) ||
+						(winOutBldEnable && winOutBuffer[x]);
+
+	if (pix->layer == -1) { // Drawing top pixel
+		if (fitsWindow) {
+			if ((BLDCNT & (1 << layer)) || semiTransparent) { // Make sure new pixel is first target
+				pix->oldColor = color;
+				if (blendMode == 2) {
+					// I really hope these variables get optimized out
+					int red = color & 0x1F;
+					int green = (color >> 5) & 0x1F;
+					int blue = (color >> 10) & 0x1F;
+					color = (red + (int)((31 - red) * evyCoefficientFloat)) |
+							((green + (int)((31 - green) * evyCoefficientFloat)) << 5) |
+							((blue + (int)((31 - blue) * evyCoefficientFloat)) << 10);
+				}
+				if (blendMode == 3) {
+					int red = color & 0x1F;
+					int green = (color >> 5) & 0x1F;
+					int blue = (color >> 10) & 0x1F;
+					color = (red - (int)(red * evyCoefficientFloat)) |
+							((green - (int)(green * evyCoefficientFloat)) << 5) |
+							((blue - (int)(blue * evyCoefficientFloat)) << 10);
+				}
+			}
+		}
+
+		pix->color = color;
+		pix->layer = layer;
+		pix->semiTransparent = semiTransparent;
+	} else if (fitsWindow && ((blendMode == 1) || pix->semiTransparent)) {
+		if ((BLDCNT & (1 << pix->layer)) || pix->semiTransparent) { // Make sure old pixel is first target
+			if (BLDCNT & (0x100 << layer)) { // Make sure new pixel is second target
+				if (pix->semiTransparent)
+					pix->color = pix->oldColor;
+				pix->color = std::min(31, (int)((pix->color & 0x1F) * evaCoefficientFloat) + (int)((color & 0x1F) * evbCoefficientFloat)) |
+						(std::min(31, (int)(((pix->color >> 5) & 0x1F) * evaCoefficientFloat) + (int)(((color >> 5) & 0x1F) * evbCoefficientFloat)) << 5) |
+						(std::min(31, (int)(((pix->color >> 10) & 0x1F) * evaCoefficientFloat) + (int)(((color >> 10) & 0x1F) * evbCoefficientFloat)) << 10);
+			}
+		}
+		pix->layer = layer;
+		pix->semiTransparent = semiTransparent;
+	}
+}
+
+static const unsigned int objSizeArray[3][4][2] = {
+	{{8, 8}, {16, 16}, {32, 32}, {64, 64}},
+	{{16, 8}, {32, 8}, {32, 16}, {64, 32}},
+	{{8, 16}, {8, 32}, {16, 32}, {32, 64}}
+};
 
 void GBAPPU::drawObjects(int priority) {
 	if (!screenDisplayObj)
@@ -190,7 +241,7 @@ void GBAPPU::drawObjects(int priority) {
 
 			for (unsigned int relX = 0; relX < (xSize << (obj->objMode == 3)); relX++) {
 				if (x < 240) {
-					if (mergedBuffer[x].priority == -1) {
+					if ((mergedBuffer[x].layer == -1) || ((blendMode == 1) && (mergedBuffer[x].layer != 4))) {
 						if ((obj->objMode == 1) || (obj->objMode == 3)) {
 							unsigned int mosX = floor(affX);
 							mosY = floor(affY);
@@ -202,10 +253,12 @@ void GBAPPU::drawObjects(int priority) {
 								tileDataAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((int)mosY / 8) * (objMappingDimension ? (xSize / 8) : (32 >> obj->bpp))) + ((int)mosX / 8)) * (32 << obj->bpp)) + (((unsigned int)mosY & 7) * (4 << obj->bpp)) + (((unsigned int)mosX & 7) / (2 >> obj->bpp));
 
 								tileData = vram[tileDataAddress];
-								if (mosX & 1) {
-									tileData >>= 4;
-								} else {
-									tileData &= 0xF;
+								if (!obj->bpp) {
+									if (mosX & 1) {
+										tileData >>= 4;
+									} else {
+										tileData &= 0xF;
+									}
 								}
 							} else {
 								tileData = 0;
@@ -242,19 +295,13 @@ void GBAPPU::drawObjects(int priority) {
 								winObjBuffer[x] = true;
 							}
 						} else {
-							Pixel *pix = &mergedBuffer[x];
 							if (tileData) {
-								if (window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) {
-									if ((window0DisplayFlag && win0ObjEnable && win0Buffer[x]) ||
-										(window1DisplayFlag && win1ObjEnable && win1Buffer[x]) ||
-										(windowObjDisplayFlag && winObjObjEnable && winObjBuffer[x]) ||
-										(winOutObjEnable && winOutBuffer[x])) {
-										pix->priority = priority + 4;
-										pix->color = paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData];
-									}
-								} else {
-									pix->priority = priority + 4;
-									pix->color = paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData];
+								if (!(window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) ||
+									(win0ObjEnable && win0Buffer[x]) ||
+									(win1ObjEnable && win1Buffer[x]) ||
+									(winObjObjEnable && winObjBuffer[x]) ||
+									(winOutObjEnable && winOutBuffer[x])) {
+									addPixel(x, paletteColors[0x100 | ((obj->palette << 4) * !obj->bpp) | tileData], 4, (obj->gfxMode == 1));
 								}
 							}
 						}
@@ -312,7 +359,7 @@ constexpr std::array<int (GBAPPU::*)(int, int), 16> tilemapIndexLUT = {
 };
 
 template <int bgNum>
-void GBAPPU::drawBg() {
+void GBAPPU::drawBgTile() {
 	int xOffset;
 	int yOffset;
 	int screenSize;
@@ -376,7 +423,7 @@ void GBAPPU::drawBg() {
 		y -= y % (bgMosV + 1);
 
 	for (int i = 0; i < 240; i++, x++) {
-		if (mergedBuffer[i].priority != -1)
+		if ((mergedBuffer[i].layer != -1) && !mergedBuffer[i].semiTransparent && (blendMode != 1))
 			continue;
 
 		mosX = mosaic ? (x - (x % (bgMosH + 1))) : x;
@@ -410,15 +457,13 @@ void GBAPPU::drawBg() {
 			}
 		}
 
-		Pixel *pix = &mergedBuffer[i];
 		if (tileData) {
 			if (!(window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) ||
-				(window0DisplayFlag && (WININ & winRegMask) && win0Buffer[i]) ||
-				(window1DisplayFlag && (WININ & (winRegMask << 8)) && win1Buffer[i]) ||
-				(windowObjDisplayFlag && (WINOUT & (winRegMask << 8)) && winObjBuffer[i]) ||
+				((WININ & winRegMask) && win0Buffer[i]) ||
+				((WININ & (winRegMask << 8)) && win1Buffer[i]) ||
+				((WINOUT & (winRegMask << 8)) && winObjBuffer[i]) ||
 				((WINOUT & winRegMask) && winOutBuffer[i])) {
-				pix->priority = bgNum;
-				pix->color = paletteColors[(paletteBank * !bpp) | tileData];
+				addPixel(i, paletteColors[(paletteBank * !bpp) | tileData], bgNum, false);
 			}
 		}
 	}
@@ -463,7 +508,7 @@ void GBAPPU::drawBgAffine() {
 	}
 
 	for (int i = 0; i < 240; i++, affX += pa, affY += pc) {
-		if (mergedBuffer[i].priority != -1)
+		if ((mergedBuffer[i].layer != -1) && !mergedBuffer[i].semiTransparent && (blendMode != 1))
 			continue;
 
 		int mosX = mosaic ? ((int)affX - ((int)affX % (bgMosH + 1))) : (int)affX;
@@ -477,15 +522,13 @@ void GBAPPU::drawBgAffine() {
 			continue;
 		u8 tileData = vram[tileAddress];
 
-		Pixel *pix = &mergedBuffer[i];
 		if (tileData) {
 			if (!(window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) ||
-				(window0DisplayFlag && (WININ & winRegMask) && win0Buffer[i]) ||
-				(window1DisplayFlag && (WININ & (winRegMask << 8)) && win1Buffer[i]) ||
-				(windowObjDisplayFlag && (WINOUT & (winRegMask << 8)) && winObjBuffer[i]) ||
+				((WININ & winRegMask) && win0Buffer[i]) ||
+				((WININ & (winRegMask << 8)) && win1Buffer[i]) ||
+				((WINOUT & (winRegMask << 8)) && winObjBuffer[i]) ||
 				((WINOUT & winRegMask) && winOutBuffer[i])) {
-				pix->priority = bgNum;
-				pix->color = paletteColors[tileData];
+				addPixel(i, paletteColors[tileData], bgNum, false);
 			}
 		}
 	}
@@ -500,7 +543,7 @@ void GBAPPU::drawBgBitmap() {
 	float pc = (float)BG2PC / 256;
 
 	for (int x = 0; x < 240; x++, affX += pa, affY += pc) {
-		if (mergedBuffer[x].priority != -1)
+		if ((mergedBuffer[x].layer != -1) && !mergedBuffer[x].semiTransparent && (blendMode != 1))
 			continue;
 
 		int mosX = bg2Mosaic ? ((int)affX - ((int)affX % (bgMosH + 1))) : (int)affX;
@@ -527,14 +570,12 @@ void GBAPPU::drawBgBitmap() {
 			vramData = (vram[vramIndex + 1] << 8) | vram[vramIndex];
 		}
 
-		Pixel *pix = &mergedBuffer[x];
 		if (!(window0DisplayFlag || window1DisplayFlag || windowObjDisplayFlag) ||
-			(window0DisplayFlag && win0Bg2Enable && win0Buffer[x]) ||
-			(window1DisplayFlag && win1Bg2Enable && win1Buffer[x]) ||
-			(windowObjDisplayFlag && winObjBg2Enable && winObjBuffer[x]) ||
+			(win0Bg2Enable && win0Buffer[x]) ||
+			(win1Bg2Enable && win1Buffer[x]) ||
+			(winObjBg2Enable && winObjBuffer[x]) ||
 			(winOutBg2Enable && winOutBuffer[x])) {
-			pix->color = vramData;
-			pix->priority = bg2Priority;
+			addPixel(x, vramData, bg2Priority, false);
 		}
 	}
 }
@@ -546,7 +587,8 @@ void GBAPPU::drawScanline() {
 	}
 
 	for (int i = 0; i < 240; i++) {
-		mergedBuffer[i].priority = -1;
+		mergedBuffer[i].layer = -1;
+		mergedBuffer[i].semiTransparent = false;
 	}
 	calculateWindow();
 
@@ -554,17 +596,17 @@ void GBAPPU::drawScanline() {
 	case 0:
 		for (int layer = 0; layer < 4; layer++) {
 			drawObjects(layer);
-			if (bg0Priority == layer) drawBg<0>();
-			if (bg1Priority == layer) drawBg<1>();
-			if (bg2Priority == layer) drawBg<2>();
-			if (bg3Priority == layer) drawBg<3>();
+			if (bg0Priority == layer) drawBgTile<0>();
+			if (bg1Priority == layer) drawBgTile<1>();
+			if (bg2Priority == layer) drawBgTile<2>();
+			if (bg3Priority == layer) drawBgTile<3>();
 		}
 		break;
 	case 1:
 		for (int layer = 0; layer < 4; layer++) {
 			drawObjects(layer);
-			if (bg0Priority == layer) drawBg<0>();
-			if (bg1Priority == layer) drawBg<1>();
+			if (bg0Priority == layer) drawBgTile<0>();
+			if (bg1Priority == layer) drawBgTile<1>();
 			if (bg2Priority == layer) drawBgAffine<2>();
 		}
 		break;
@@ -596,7 +638,9 @@ void GBAPPU::drawScanline() {
 	}
 
 	for (int i = 0; i < 240; i++) { // Copy scanline buffer to main framebuffer
-		framebuffer[currentScanline][i] = convertColor((mergedBuffer[i].priority == -1) ? paletteColors[0] : mergedBuffer[i].color);
+		if (mergedBuffer[i].layer == -1)
+			addPixel(i, paletteColors[0], 5, false);
+		framebuffer[currentScanline][i] = convertColor(mergedBuffer[i].color);
 	}
 
 	if (greenSwap) { // Convert BGRbgr pattern to BgRbGr
@@ -921,12 +965,15 @@ void GBAPPU::writeIO(u32 address, u8 value) {
 		break;
 	case 0x4000052:
 		BLDALPHA = (BLDALPHA & 0xFF00) | (value & 0x1F);
+		evaCoefficientFloat = (evaCoefficient & 0x10) ? 1 : (float)evaCoefficient / 16;
 		break;
 	case 0x4000053:
 		BLDALPHA = (BLDALPHA & 0x00FF) | ((value & 0x1F) << 8);
+		evbCoefficientFloat = (evbCoefficient & 0x10) ? 1 : (float)evbCoefficient / 16;
 		break;
 	case 0x4000054:
 		BLDY = value & 0x1F;
+		evyCoefficientFloat = (evyCoefficient & 0x10) ? 1 : (float)evyCoefficient / 16;
 		break;
 	}
 }
