@@ -359,7 +359,7 @@ void audioCallback(void *userdata, uint8_t *stream, int len) {
 	}
 
 	GBA.apu.sampleBufferIndex = 0;
-	GBA.cpu.running = true;
+	GBA.apu.apuBlock = false;
 	GBA.apu.sampleBufferMutex.unlock();
 }
 

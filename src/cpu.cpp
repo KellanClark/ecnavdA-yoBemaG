@@ -20,7 +20,7 @@ void GBACPU::run() { // Emulator thread is run from here
 	while (1) {
 		processThreadEvents();
 
-		if (running) {
+		if (running && !bus.apu.apuBlock) {
 			systemEvents.recalculate = false;
 			u64 cyclesToRun = systemEvents.cyclesUntilNextEvent();
 
@@ -53,7 +53,6 @@ void GBACPU::run() { // Emulator thread is run from here
 				(*systemEvents.eventQueue.top().callback)(systemEvents.eventQueue.top().userData);
 				systemEvents.eventQueue.pop();
 			}
-			processThreadEvents();
 		}
 	}
 }

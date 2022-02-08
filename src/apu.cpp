@@ -3,6 +3,7 @@
 #include "scheduler.hpp"
 #include "gba.hpp"
 #include <cstdio>
+#include <cstring>
 
 GBAAPU::GBAAPU(GameBoyAdvance& bus_) : bus(bus_) {
 	ch1OverrideEnable = ch2OverrideEnable = ch3OverrideEnable = ch4OverrideEnable = chAOverrideEnable = chBOverrideEnable = true;
@@ -13,13 +14,32 @@ GBAAPU::GBAAPU(GameBoyAdvance& bus_) : bus(bus_) {
 void GBAAPU::reset() {
 	frameSequencerCounter = 0;
 
+	channel1.SOUND1CNT_L = channel1.SOUND1CNT_H = channel1.SOUND1CNT_X = 0;
+	channel1.frequencyTimer = channel1.waveIndex = channel1.shadowFrequency = channel1.sweepTimer = channel1.lengthCounter = channel1.periodTimer = channel1.currentVolume = 0;
+	channel1.sweepEnabled = false;
+
+	channel2.SOUND2CNT_L = channel2.SOUND2CNT_H = 0;
+	channel2.frequencyTimer = channel2.waveIndex = channel2.lengthCounter = channel2.periodTimer = channel2.currentVolume = 0;
+
+	channel3.SOUND3CNT_L = channel3.SOUND3CNT_H = channel3.SOUND3CNT_X = 0;
+	memset(channel3.waveMem, 0, sizeof(channel3.waveMem));
+	channel3.waveMemIndex = channel3.frequencyTimer = channel3.lengthCounter = 0;
+
+	channel4.SOUND4CNT_L = channel4.SOUND4CNT_H = 0;
+	channel4.frequencyTimer = channel4.lfsr = channel4.lengthCounter = channel4.periodTimer = channel4.currentVolume;
+
+	soundControl.SOUNDCNT_L = soundControl.SOUNDCNT_H = soundControl.SOUNDCNT_X = soundControl.SOUNDBIAS = 0;
+	soundControl.volumeFloatL = soundControl.volumeFloatR = 0;
+
 	channelA.fifo = {};
+	channelA.currentSample = 0;
 	channelB.fifo = {};
 	channelB.currentSample = 0;
-	soundControl.chBReset = false;
 
 	systemEvents.addEvent(16777216 / 32768, sampleEvent, this);
 	systemEvents.addEvent(8192 * 4, frameSequencerEvent, this);
+	sampleBufferIndex = 0;
+	apuBlock = false;
 }
 
 static const float squareWaveDutyCycles[4][8] {
@@ -219,7 +239,7 @@ void GBAAPU::generateSample() {
 	}
 
 	if (sampleBufferIndex == (sizeof(sampleBuffer) / sizeof(i16)))
-		bus.cpu.running = false;
+		apuBlock = true;
 
 	systemEvents.addEvent(16777216 / 32768, sampleEvent, this);
 	sampleBufferMutex.unlock();

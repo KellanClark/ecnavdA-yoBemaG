@@ -30,6 +30,7 @@ public:
 	std::mutex sampleBufferMutex;
 	std::atomic<int> sampleBufferIndex;
 	std::array<i16, 2048> sampleBuffer;
+	bool apuBlock;
 
 	bool ch1OverrideEnable;
 	bool ch2OverrideEnable;
