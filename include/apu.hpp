@@ -6,6 +6,7 @@
 #include <array>
 #include <queue>
 #include <atomic>
+#include <mutex>
 
 class GameBoyAdvance;
 class GBAAPU {
