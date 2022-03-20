@@ -16,6 +16,13 @@ public:
 	void reset();
 	void run();
 
+	void softwareInterrupt(u32 opcode) override;
+	void thumbSoftwareInterrupt(u16 opcode) override;
+
+	u16 IE;
+	u16 IF;
+	bool IME;
+	bool halted;
 	enum irqType {
 		IRQ_VBLANK = 1 << 0,
 		IRQ_HBLANK = 1 << 1,
@@ -32,6 +39,7 @@ public:
 		IRQ_KEYPAD = 1 << 12,
 		IRQ_GAMEPAK = 1 << 13
 	};
+	void testInterrupt();
 	void requestInterrupt(irqType bit);
 
 	static void stopEvent(void *object);
@@ -54,7 +62,6 @@ public:
 	void addThreadEvent(threadEventType type, u64 intArg);
 	void addThreadEvent(threadEventType type, u64 intArg, void *ptrArg);
 
-	bool pauseCpu;
 	std::atomic<bool> running;
 	bool traceInstructions;
 	bool logInterrupts;

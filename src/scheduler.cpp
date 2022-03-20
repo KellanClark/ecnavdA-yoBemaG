@@ -14,16 +14,23 @@ Scheduler::Scheduler() {
 void Scheduler::reset() {
 	currentTime = 0;
 	eventQueue = {};
-	eventQueue.push(Event{ULLONG_MAX, nullptr, nullptr}); // Always keep CPU running. Will segfault if left for ~34,841 years. Pls don't.
-}
-
-u64 Scheduler::cyclesUntilNextEvent() {
-	return eventQueue.top().timeStamp - currentTime;
 }
 
 void Scheduler::addEvent(u64 cycles, void (*function)(void*), void *pointer) {
 	eventQueue.push(Event{currentTime + cycles, function, pointer});
 	recalculate = true;
+}
+
+void Scheduler::tickScheduler(int cycles) {
+	for (int i = 0; i < cycles; i++) {
+		while (currentTime >= eventQueue.top().timeStamp) {
+			auto callback = eventQueue.top().callback;
+			auto userData = eventQueue.top().userData;
+			eventQueue.pop();
+			(*callback)(userData);
+		}
+		++currentTime;
+	}
 }
 
 Scheduler systemEvents;

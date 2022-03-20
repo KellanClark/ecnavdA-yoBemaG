@@ -52,6 +52,8 @@ void GBAPPU::lineStartEvent(void *object) {
 }
 
 void GBAPPU::lineStart() {
+	systemEvents.addEvent(1232, lineStartEvent, this);
+
 	hBlankFlag = false;
 	++currentScanline;
 	if (currentScanline == 160) { // VBlank
@@ -60,7 +62,7 @@ void GBAPPU::lineStart() {
 
 		if (vBlankIrqEnable)
 			bus.cpu.requestInterrupt(GBACPU::IRQ_VBLANK);
-		
+
 		bus.dma.onVBlank();
 	} else if (currentScanline == 228) { // Start of frame
 		currentScanline = 0;
@@ -89,8 +91,6 @@ void GBAPPU::lineStart() {
 		win1VertFits = true;
 	if (currentScanline == win1Bottom)
 		win1VertFits = false;
-
-	systemEvents.addEvent(1232, lineStartEvent, this);
 }
 
 void GBAPPU::hBlankEvent(void *object) {
@@ -98,6 +98,8 @@ void GBAPPU::hBlankEvent(void *object) {
 }
 
 void GBAPPU::hBlank() {
+	systemEvents.addEvent(1232, hBlankEvent, this);
+
 	if (currentScanline < 160)
 		drawScanline();
 
@@ -107,8 +109,6 @@ void GBAPPU::hBlank() {
 
 	if (!vBlankFlag)
 		bus.dma.onHBlank();
-
-	systemEvents.addEvent(1232, hBlankEvent, this);
 }
 
 inline void GBAPPU::calculateWindow() {
@@ -183,10 +183,11 @@ inline void GBAPPU::addPixel(int x, u16 color, int layer, bool semiTransparent) 
 	}
 }
 
-static const unsigned int objSizeArray[3][4][2] = {
+static const unsigned int objSizeArray[4][4][2] = {
 	{{8, 8}, {16, 16}, {32, 32}, {64, 64}},
 	{{16, 8}, {32, 8}, {32, 16}, {64, 32}},
-	{{8, 16}, {8, 32}, {16, 32}, {32, 64}}
+	{{8, 16}, {8, 32}, {16, 32}, {32, 64}},
+	{{0, 0}, {0, 0}, {0, 0}, {0, 0}}
 };
 
 void GBAPPU::drawObjects(int priority) {

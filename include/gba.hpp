@@ -49,10 +49,14 @@ public:
 
 	u8 readDebug(u32 address);
 	template <typename T> T openBus(u32 address);
-	template <typename T> u32 read(u32 address);
+	template <typename T> u32 read(u32 address, bool sequential);
 	u8 readIO(u32 address);
-	template <typename T> void write(u32 address, T value);
+	void writeDebug(u32 address, u8 value, bool unrestricted);
+	template <typename T> void write(u32 address, T value, bool sequential);
 	void writeIO(u32 address, u8 value);
+
+	bool forceNonSequential;
+	void internalCycle(int cycles);
 
 	std::stringstream log;
 	bool logFlash;
@@ -79,18 +83,41 @@ public:
 
 	u32 biosOpenBusValue;
 	u32 openBusValue;
-	std::vector<u8> biosBuff;
 	u8 ewram[0x40000];
 	u8 iwram[0x8000];
-	u16 KEYINPUT;
-	u16 KEYCNT;
+	u16 KEYINPUT; // 0x4000130
+	u16 KEYCNT; // 0x4000132
+	bool POSTFLG; // 0x4000300
+
+
+	union {
+		struct {
+			u16 sramWaitControl : 2;
+			u16 ws0NonSequentialControl : 2;
+			u16 ws0SequentialControl : 1;
+			u16 ws1NonSequentialControl : 2;
+			u16 ws1SequentialControl : 1;
+			u16 ws2NonSequentialControl : 2;
+			u16 ws2SequentialControl : 1;
+			u16 phiControl : 2;
+			u16 : 1;
+			u16 prefetchBufferEnable : 1;
+			u16 : 1;
+		};
+		u16 WAITCNT; // 0x4000204
+	};
+	int sramCycles;
+	int ws0NonSequentialCycles;
+	int ws0SequentialCycles;
+	int ws1NonSequentialCycles;
+	int ws1SequentialCycles;
+	int ws2NonSequentialCycles;
+	int ws2SequentialCycles;
+
+	std::vector<u8> biosBuff;
+	int romSize;
 	std::vector<u8> romBuff;
 	std::vector<u8> sram;
-
-private:
-	u8 *pageTableRead[8192];
-	u8 *pageTableWrite[8192];
-	u8 *pageTableWriteByte[8192];
 };
 
 #endif

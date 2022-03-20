@@ -17,24 +17,6 @@ public:
 	void resetARM7TDMI();
 	void cycle();
 
-	u16 IE;
-	u16 IF;
-	bool IME;
-	bool halted;
-
-	std::string disassemble(u32 address, u32 opcode, bool thumb);
-	std::string getRegName(unsigned int regNumber);
-	std::string disassembleShift(u32 opcode, bool showUpDown);
-	struct {
-		bool showALCondition;
-		bool alwaysShowSBit;
-		bool printOperandsHex;
-		bool printAddressesHex;
-		bool simplifyRegisterNames;
-		bool simplifyPushPop;
-		bool ldmStmStackSuffixes;
-	} disassemblerOptions;
-
 	enum cpuMode {
 		MODE_USER = 0x10,
 		MODE_FIQ = 0x11,
@@ -48,6 +30,7 @@ public:
 		// Normal registers
 		u32 R[16];
 
+		// Status register
 		union {
 			struct {
 				u32 mode : 5;
@@ -73,20 +56,23 @@ public:
 	} reg;
 
 	/* Instruction Decoding/Executing */
+	bool processIrq;
 	int pipelineStage;
 	u32 pipelineOpcode1; // R15
 	u32 pipelineOpcode2; // R15 + 4
 	u32 pipelineOpcode3; // R15 + 8
+	bool nextFetchType;
 	bool incrementR15;
-	bool tmpIncrement;
 
 	inline bool checkCondition(int condtionCode);
+	void fetchOpcode();
+	void flushPipeline();
 	void unknownOpcodeArm(u32 opcode);
 	void unknownOpcodeArm(u32 opcode, std::string message);
 	void unknownOpcodeThumb(u16 opcode);
 	void unknownOpcodeThumb(u16 opcode, std::string message);
-	template <bool dataTransfer, bool iBit> bool computeShift(u32 opcode, u32 *result);
 
+	template <bool dataTransfer, bool iBit> bool computeShift(u32 opcode, u32 *result);
 	void switchMode(cpuMode newMode);
 	void bankRegisters(cpuMode newMode, bool changeCPSR);
 	void leaveMode();
@@ -101,10 +87,10 @@ public:
 	void branchExchange(u32 opcode);
 	template <bool prePostIndex, bool upDown, bool immediateOffset, bool writeBack, bool loadStore, int shBits> void halfwordDataTransfer(u32 opcode);
 	template <bool immediateOffset, bool prePostIndex, bool upDown, bool byteWord, bool writeBack, bool loadStore> void singleDataTransfer(u32 opcode);
-	void undefined(u32 opcode);
+	virtual void undefined(u32 opcode);
 	template <bool prePostIndex, bool upDown, bool sBit, bool writeBack, bool loadStore> void blockDataTransfer(u32 opcode);
 	template <bool lBit> void branch(u32 opcode);
-	void softwareInterrupt(u32 opcode);
+	virtual void softwareInterrupt(u32 opcode);
 
 	template <int op, int shiftAmount> void thumbMoveShiftedReg(u16 opcode);							// 1
 	template <bool immediate, bool op, int offset> void thumbAddSubtract(u16 opcode);					// 2
@@ -122,7 +108,7 @@ public:
 	template <bool loadStore, bool pcLr> void thumbPushPopRegisters(u16 opcode);						// 14
 	template <bool loadStore, int baseReg> void thumbMultipleLoadStore(u16 opcode);						// 15
 	template <int condition> void thumbConditionalBranch(u16 opcode);									// 16
-	void thumbSoftwareInterrupt(u16 opcode);															// 17
+	virtual void thumbSoftwareInterrupt(u16 opcode);															// 17
 	void thumbUncondtionalBranch(u16 opcode);															// 18
 	template <bool lowHigh> void thumbLongBranchLink(u16 opcode);										// 19
 

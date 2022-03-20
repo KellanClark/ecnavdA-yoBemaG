@@ -237,6 +237,10 @@ void layerViewWindow() {
 		ImGui::EndCombo();
 	}
 
+	if (layerInfo[currentlySelectedLayer].enumValue >= MODE3_BG2) {
+		ImGui::Text("[%02X.%02X, %02X.%02X]\n[%02X.%02X, %02X.%02X]", GBA.ppu.BG2PA >> 8, GBA.ppu.BG2PA & 0xFF, GBA.ppu.BG2PB >> 8, GBA.ppu.BG2PB & 0xFF, GBA.ppu.BG2PC >> 8, GBA.ppu.BG2PC & 0xFF, GBA.ppu.BG2PD >> 8, GBA.ppu.BG2PD & 0xFF);
+	}
+
 	drawDebugLayer(layerInfo[currentlySelectedLayer].enumValue, debugBuffer);
 	glBindTexture(GL_TEXTURE_2D, debugTexture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB5_A1, screenXSize, screenYSize, 0, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, debugBuffer);

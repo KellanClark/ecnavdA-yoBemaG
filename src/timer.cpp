@@ -15,6 +15,8 @@ void GBATIMER::reset() {
 	TIM3D = TIM3CNT = initialTIM3D = 0;
 }
 
+const int prescalerMasks[4] = {1, 64, 256, 1024};
+
 void GBATIMER::checkOverflowEvent(void *object) {
 	static_cast<GBATIMER *>(object)->checkOverflow();
 }
@@ -28,7 +30,7 @@ void GBATIMER::checkOverflow() {
 
 			TIM0D = initialTIM0D;
 			tim0Timestamp = systemEvents.currentTime;
-			systemEvents.addEvent((0x10000 - TIM0D) * (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1), &checkOverflowEvent, this);
+			systemEvents.addEvent((((0x10000 - TIM0D) * prescalerMasks[tim0Frequency]) + (tim0Timestamp & ~(prescalerMasks[tim0Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
 
 			bus.apu.onTimer(0);
 			previousOverflow = true;
@@ -43,7 +45,8 @@ void GBATIMER::checkOverflow() {
 
 			TIM1D = initialTIM1D;
 			tim1Timestamp = systemEvents.currentTime;
-			systemEvents.addEvent((0x10000 - TIM1D) * (tim1Frequency ? (16 << (2 * tim1Frequency)) : 1), &checkOverflowEvent, this);
+			//systemEvents.addEvent((0x10000 - TIM1D) * (tim1Frequency ? (16 << (2 * tim1Frequency)) : 1), &checkOverflowEvent, this);
+			systemEvents.addEvent((((0x10000 - TIM1D) * prescalerMasks[tim1Frequency]) + (tim1Timestamp & ~(prescalerMasks[tim1Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
 			bus.apu.onTimer(1);
 
 			previousOverflow = true;
@@ -66,7 +69,8 @@ void GBATIMER::checkOverflow() {
 
 			TIM2D = initialTIM2D;
 			tim2Timestamp = systemEvents.currentTime;
-			systemEvents.addEvent((0x10000 - TIM2D) * (tim2Frequency ? (16 << (2 * tim2Frequency)) : 1), &checkOverflowEvent, this);
+			//systemEvents.addEvent((0x10000 - TIM2D) * (tim2Frequency ? (16 << (2 * tim2Frequency)) : 1), &checkOverflowEvent, this);
+			systemEvents.addEvent((((0x10000 - TIM2D) * prescalerMasks[tim2Frequency]) + (tim2Timestamp & ~(prescalerMasks[tim2Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
 
 			previousOverflow = true;
 		} else if (tim2Cascade && previousOverflow) { // Cascade
@@ -81,13 +85,14 @@ void GBATIMER::checkOverflow() {
 		}
 	}
 	if (tim3Enable) {
-		if (getDValue<3>() > 0xFFFF) { // Overflow
+		if ((getDValue<3>() > 0xFFFF) && !tim3Cascade) { // Overflow
 			if (tim3Irq)
 				bus.cpu.requestInterrupt(GBACPU::IRQ_TIMER3);
 
 			TIM3D = initialTIM3D;
 			tim3Timestamp = systemEvents.currentTime;
-			systemEvents.addEvent((0x10000 - TIM3D) * (tim3Frequency ? (16 << (2 * tim3Frequency)) : 1), &checkOverflowEvent, this);
+			//systemEvents.addEvent((0x10000 - TIM3D) * (tim3Frequency ? (16 << (2 * tim3Frequency)) : 1), &checkOverflowEvent, this);
+			systemEvents.addEvent((((0x10000 - TIM3D) * prescalerMasks[tim3Frequency]) + (tim3Timestamp & ~(prescalerMasks[tim3Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
 		} else if (tim3Cascade && previousOverflow) { // Cascade
 			if (++TIM3D == 0) { // Cascade Overflow
 				if (tim3Irq)
@@ -101,13 +106,17 @@ template <int timer>
 u64 GBATIMER::getDValue() {
 	switch (timer) {
 	case 0:
-		return TIM0D + (tim0Enable * ((systemEvents.currentTime - tim0Timestamp) / (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1)));
+		//return TIM0D + (tim0Enable * ((systemEvents.currentTime - tim0Timestamp) / (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1)));
+		return TIM0D + (tim0Enable * ((systemEvents.currentTime - (tim0Timestamp & ~(prescalerMasks[tim0Frequency] - 1))) / prescalerMasks[tim0Frequency]));
 	case 1:
-		return TIM1D + ((tim1Enable && !tim1Cascade) * ((systemEvents.currentTime - tim1Timestamp) / (tim1Frequency ? (16 << (2 * tim1Frequency)) : 1)));
+		//return TIM1D + ((tim1Enable && !tim1Cascade) * ((systemEvents.currentTime - tim1Timestamp) / (tim1Frequency ? (16 << (2 * tim1Frequency)) : 1)));
+		return TIM1D + (tim1Enable * !tim1Cascade * ((systemEvents.currentTime - (tim1Timestamp & ~(prescalerMasks[tim1Frequency] - 1))) / prescalerMasks[tim1Frequency]));
 	case 2:
-		return TIM2D + ((tim2Enable && !tim2Cascade) * ((systemEvents.currentTime - tim2Timestamp) / (tim2Frequency ? (16 << (2 * tim2Frequency)) : 1)));
+		//return TIM2D + ((tim2Enable && !tim2Cascade) * ((systemEvents.currentTime - tim2Timestamp) / (tim2Frequency ? (16 << (2 * tim2Frequency)) : 1)));
+		return TIM2D + (tim2Enable * !tim2Cascade * ((systemEvents.currentTime - (tim2Timestamp & ~(prescalerMasks[tim2Frequency] - 1))) / prescalerMasks[tim2Frequency]));
 	case 3:
-		return TIM3D + ((tim3Enable && !tim3Cascade) * ((systemEvents.currentTime - tim3Timestamp) / (tim3Frequency ? (16 << (2 * tim3Frequency)) : 1)));
+		//return TIM3D + ((tim3Enable && !tim3Cascade) * ((systemEvents.currentTime - tim3Timestamp) / (tim3Frequency ? (16 << (2 * tim3Frequency)) : 1)));
+		return TIM3D + (tim3Enable * !tim3Cascade * ((systemEvents.currentTime - (tim3Timestamp & ~(prescalerMasks[tim3Frequency] - 1))) / prescalerMasks[tim3Frequency]));
 	}
 }
 
@@ -159,23 +168,15 @@ void GBATIMER::writeIO(u32 address, u8 value) {
 		initialTIM0D = (initialTIM0D & 0x00FF) | (value << 8);
 		break;
 	case 0x4000102:
-		if ((value & 0x80) && !(TIM0CNT & 0x80)) { // Enabling the timer
+		if ((value & 0x80) && (!tim0Enable || ((value & 0x03) != tim0Frequency))) { // Enabling the timer or changing frequency
 			TIM0D = initialTIM0D;
-			tim0Timestamp = systemEvents.currentTime;
+			tim0Timestamp = systemEvents.currentTime + 2;
+			systemEvents.addEvent((((0x10000 - TIM0D) * prescalerMasks[tim0Frequency]) + (tim0Timestamp & ~(prescalerMasks[tim0Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
 		}
-		if ((!(value & 0x80) && (TIM0CNT & 0x80)) || ((value & 4) && !(TIM0CNT & 4))) // Disabling the timer or enabling cascade
+		if (!(value & 0x80) && tim0Enable) // Disabling the timer
 			TIM0D = getDValue<0>();
-		if (((value & 3) != (TIM0CNT & 3)) && !(value & 4)) { // Changing frequency with cascade off
-			TIM0D = getDValue<0>();
-			tim0Timestamp = systemEvents.currentTime;
-		}
-		if (!(value & 4) && (TIM0CNT & 4)) // Disabling cascade
-			tim0Timestamp = systemEvents.currentTime;
 
-		TIM0CNT = (value & 0xC3);
-
-		if (tim0Timestamp == systemEvents.currentTime && tim0Enable)
-			systemEvents.addEvent((0x10000 - TIM0D) * (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1), &checkOverflowEvent, this);
+		TIM0CNT = value & 0xC3;
 		break;
 	case 0x4000104:
 		initialTIM1D = (initialTIM1D & 0xFF00) | value;
@@ -184,23 +185,15 @@ void GBATIMER::writeIO(u32 address, u8 value) {
 		initialTIM1D = (initialTIM1D & 0x00FF) | (value << 8);
 		break;
 	case 0x4000106:
-		if ((value & 0x80) && !(TIM1CNT & 0x80)) { // Enabling the timer
+		if ((value & 0x80) && (!tim1Enable || ((value & 0x03) != tim1Frequency))) { // Enabling the timer or changing frequency
 			TIM1D = initialTIM1D;
-			tim1Timestamp = systemEvents.currentTime;
+			tim1Timestamp = systemEvents.currentTime + 2;
+			systemEvents.addEvent((((0x10000 - TIM1D) * prescalerMasks[tim1Frequency]) + (tim1Timestamp & ~(prescalerMasks[tim1Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
 		}
-		if ((!(value & 0x80) && (TIM1CNT & 0x80)) || ((value & 4) && !(TIM1CNT & 4))) // Disabling the timer or enabling cascade
+		if (!(value & 0x80) && tim1Enable) // Disabling the timer
 			TIM1D = getDValue<1>();
-		if (((value & 3) != (TIM1CNT & 3)) && !(value & 4)) { // Changing frequency with cascade off
-			TIM1D = getDValue<1>();
-			tim1Timestamp = systemEvents.currentTime;
-		}
-		if (!(value & 4) && (TIM1CNT & 4)) // Disabling cascade
-			tim1Timestamp = systemEvents.currentTime;
 
-		TIM1CNT = (value & 0xC7);
-
-		if (tim1Timestamp == systemEvents.currentTime && tim1Enable && !tim1Cascade)
-			systemEvents.addEvent((0x10000 - TIM1D) * (tim1Frequency ? (16 << (2 * tim1Frequency)) : 1), &checkOverflowEvent, this);
+		TIM1CNT = value & 0xC7;
 		break;
 	case 0x4000108:
 		initialTIM2D = (initialTIM2D & 0xFF00) | value;
@@ -209,23 +202,15 @@ void GBATIMER::writeIO(u32 address, u8 value) {
 		initialTIM2D = (initialTIM2D & 0x00FF) | (value << 8);
 		break;
 	case 0x400010A:
-		if ((value & 0x80) && !(TIM2CNT & 0x80)) { // Enabling the timer
+		if ((value & 0x80) && (!tim2Enable || ((value & 0x03) != tim2Frequency))) { // Enabling the timer or changing frequency
 			TIM2D = initialTIM2D;
-			tim2Timestamp = systemEvents.currentTime;
+			tim2Timestamp = systemEvents.currentTime + 2;
+			systemEvents.addEvent((((0x10000 - TIM2D) * prescalerMasks[tim2Frequency]) + (tim2Timestamp & ~(prescalerMasks[tim2Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
 		}
-		if ((!(value & 0x80) && (TIM2CNT & 0x80)) || ((value & 4) && !(TIM2CNT & 4))) // Disabling the timer or enabling cascade
+		if (!(value & 0x80) && tim2Enable) // Disabling the timer
 			TIM2D = getDValue<2>();
-		if (((value & 3) != (TIM2CNT & 3)) && !(value & 4)) { // Changing frequency with cascade off
-			TIM2D = getDValue<2>();
-			tim2Timestamp = systemEvents.currentTime;
-		}
-		if (!(value & 4) && (TIM2CNT & 4)) // Disabling cascade
-			tim2Timestamp = systemEvents.currentTime;
 
-		TIM2CNT = (value & 0xC7);
-
-		if (tim2Timestamp == systemEvents.currentTime && tim2Enable && !tim2Cascade)
-			systemEvents.addEvent((0x10000 - TIM2D) * (tim2Frequency ? (16 << (2 * tim2Frequency)) : 1), &checkOverflowEvent, this);
+		TIM2CNT = value & 0xC7;
 		break;
 	case 0x400010C:
 		initialTIM3D = (initialTIM3D & 0xFF00) | value;
@@ -234,23 +219,15 @@ void GBATIMER::writeIO(u32 address, u8 value) {
 		initialTIM3D = (initialTIM3D & 0x00FF) | (value << 8);
 		break;
 	case 0x400010E:
-		if ((value & 0x80) && !(TIM3CNT & 0x80)) { // Enabling the timer
+		if ((value & 0x80) && (!tim3Enable || ((value & 0x03) != tim3Frequency))) { // Enabling the timer or changing frequency
 			TIM3D = initialTIM3D;
-			tim3Timestamp = systemEvents.currentTime;
+			tim3Timestamp = systemEvents.currentTime + 2;
+			systemEvents.addEvent((((0x10000 - TIM3D) * prescalerMasks[tim3Frequency]) + (tim3Timestamp & ~(prescalerMasks[tim3Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
 		}
-		if ((!(value & 0x80) && (TIM3CNT & 0x80)) || ((value & 4) && !(TIM3CNT & 4))) // Disabling the timer or enabling cascade
+		if (!(value & 0x80) && tim3Enable) // Disabling the timer
 			TIM3D = getDValue<3>();
-		if (((value & 3) != (TIM3CNT & 3)) && !(value & 4)) { // Changing frequency with cascade off
-			TIM3D = getDValue<3>();
-			tim3Timestamp = systemEvents.currentTime;
-		}
-		if (!(value & 4) && (TIM3CNT & 4)) // Disabling cascade
-			tim3Timestamp = systemEvents.currentTime;
 
-		TIM3CNT = (value & 0xC7);
-
-		if (tim3Timestamp == systemEvents.currentTime && tim3Enable && !tim3Cascade)
-			systemEvents.addEvent((0x10000 - TIM3D) * (tim3Frequency ? (16 << (2 * tim3Frequency)) : 1), &checkOverflowEvent, this);
+		TIM3CNT = value & 0xC7;
 		break;
 	}
 }

@@ -18,8 +18,8 @@ public:
 
 	Scheduler();
 	void reset();
-	u64 cyclesUntilNextEvent();
 	void addEvent(u64 cycles, void (*function)(void*), void *pointer);
+	void tickScheduler(int cycles);
 
 	u64 currentTime;
 	std::priority_queue<Event, std::vector<Event>, eventSorter> eventQueue;

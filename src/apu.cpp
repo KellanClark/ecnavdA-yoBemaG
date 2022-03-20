@@ -173,6 +173,9 @@ void GBAAPU::sampleEvent(void *object) {
 }
 
 void GBAAPU::generateSample() {
+	systemEvents.addEvent(16777216 / 32768, sampleEvent, this);
+	if (apuBlock)
+		return;
 	sampleBufferMutex.lock();
 
 	// Tick old GB channels
@@ -241,7 +244,6 @@ void GBAAPU::generateSample() {
 	if (sampleBufferIndex == (sizeof(sampleBuffer) / sizeof(i16)))
 		apuBlock = true;
 
-	systemEvents.addEvent(16777216 / 32768, sampleEvent, this);
 	sampleBufferMutex.unlock();
 }
 
@@ -480,7 +482,7 @@ void GBAAPU::writeIO(u32 address, u8 value) {
 		break;
 	case 0x4000083:
 		soundControl.SOUNDCNT_H = (soundControl.SOUNDCNT_H & 0x00FF) | (value << 8);
-		
+
 		if (soundControl.chAReset) {
 			channelA.fifo = {};
 			channelA.currentSample = 0;

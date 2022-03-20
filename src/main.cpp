@@ -4,6 +4,7 @@
 #include <numeric>
 
 #include "SDL_audio.h"
+#include "arm7tdmidisasm.hpp"
 #include "imgui.h"
 #include "backends/imgui_impl_sdl.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -54,6 +55,7 @@ void memEditorWindow();
 
 void romFileDialog();
 void biosFileDialog();
+bool memEditorUnrestrictedWrites = false;
 MemoryEditor memEditor;
 ImU8 memEditorRead(const ImU8* data, size_t off);
 void memEditorWrite(ImU8* data, size_t off, ImU8 d);
@@ -136,6 +138,7 @@ int main(int argc, char *argv[]) {
 			return -1;
 		}
 	}
+	disassembler.defaultSettings();
 
 	// Setup SDL and OpenGL
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
@@ -406,7 +409,7 @@ void mainMenuBar() {
 			GBA.cpu.addThreadEvent(GBACPU::RESET);
 			GBA.cpu.addThreadEvent(GBACPU::START);
 		}
-		
+
 		ImGui::Separator();
 		if (ImGui::BeginMenu("Audio Channels")) {
 			ImGui::MenuItem("Channel 1", NULL, &GBA.apu.ch1OverrideEnable);
@@ -498,7 +501,7 @@ void cpuDebugWindow() {
 		if (ImGui::Button("Unpause"))
 			GBA.cpu.addThreadEvent(GBACPU::START);
 	}
-	
+
 	ImGui::Spacing();
 	if (ImGui::Button("Step")) {
 		// Add events the hard way so mutex doesn't have to be unlocked
@@ -509,7 +512,7 @@ void cpuDebugWindow() {
 	}
 
 	ImGui::Separator();
-	std::string tmp = GBA.cpu.disassemble(GBA.cpu.reg.R[15] - (GBA.cpu.reg.thumbMode ? 4 : 8), GBA.cpu.pipelineOpcode3, GBA.cpu.reg.thumbMode);
+	std::string tmp = disassembler.disassemble(GBA.cpu.reg.R[15] - (GBA.cpu.reg.thumbMode ? 4 : 8), GBA.cpu.pipelineOpcode3, GBA.cpu.reg.thumbMode);
 	ImGui::Text("Current Opcode:  %s", tmp.c_str());
 	ImGui::Spacing();
 	ImGui::Text("r0:  %08X", GBA.cpu.reg.R[0]);
@@ -568,13 +571,13 @@ void systemLogWindow() {
 	}
 
 	if (ImGui::TreeNode("Diassembler Options")) {
-		ImGui::Checkbox("Show AL Condition", (bool *)&GBA.cpu.disassemblerOptions.showALCondition);
-		ImGui::Checkbox("Always Show S Bit", (bool *)&GBA.cpu.disassemblerOptions.alwaysShowSBit);
-		ImGui::Checkbox("Show Operands in Hex", (bool *)&GBA.cpu.disassemblerOptions.printOperandsHex);
-		ImGui::Checkbox("Show Addresses in Hex", (bool *)&GBA.cpu.disassemblerOptions.printAddressesHex);
-		ImGui::Checkbox("Simplify Register Names", (bool *)&GBA.cpu.disassemblerOptions.simplifyRegisterNames);
-		ImGui::Checkbox("Simplify LDM and STM to PUSH and POP", (bool *)&GBA.cpu.disassemblerOptions.simplifyPushPop);
-		ImGui::Checkbox("Use Alternative Stack Suffixes for LDM and STM", (bool *)&GBA.cpu.disassemblerOptions.ldmStmStackSuffixes);
+		ImGui::Checkbox("Show AL Condition", (bool *)&disassembler.options.showALCondition);
+		ImGui::Checkbox("Always Show S Bit", (bool *)&disassembler.options.alwaysShowSBit);
+		ImGui::Checkbox("Show Operands in Hex", (bool *)&disassembler.options.printOperandsHex);
+		ImGui::Checkbox("Show Addresses in Hex", (bool *)&disassembler.options.printAddressesHex);
+		ImGui::Checkbox("Simplify Register Names", (bool *)&disassembler.options.simplifyRegisterNames);
+		ImGui::Checkbox("Simplify LDM and STM to PUSH and POP", (bool *)&disassembler.options.simplifyPushPop);
+		ImGui::Checkbox("Use Alternative Stack Suffixes for LDM and STM", (bool *)&disassembler.options.ldmStmStackSuffixes);
 		ImGui::TreePop();
 	}
 
@@ -652,6 +655,8 @@ void memEditorWindow() {
 
 		ImGui::EndCombo();
 	}
+	ImGui::SameLine();
+	ImGui::Checkbox("Unrestrited Writes", &memEditorUnrestrictedWrites);
 
 	memEditor.DrawContents(NULL, 0x10000000);
 
@@ -663,7 +668,7 @@ ImU8 memEditorRead(const ImU8* data, size_t off) {
 }
 
 void memEditorWrite(ImU8* data, size_t off, ImU8 d) {
-	GBA.write<u8>((u32)off, d);
+	GBA.writeDebug((u32)off, d, memEditorUnrestrictedWrites);
 }
 
 bool memEditorHighlight(const ImU8* data, size_t off) {

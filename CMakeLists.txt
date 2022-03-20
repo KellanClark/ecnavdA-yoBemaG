@@ -32,6 +32,7 @@ add_executable(ecnavda-yobemag
 
 	src/main.cpp
 	src/ppudebug.cpp
+	src/arm7tdmidisasm.cpp
 	src/scheduler.cpp
 	src/gba.cpp
 	src/arm7tdmi.cpp

@@ -2,10 +2,11 @@
 #include "cpu.hpp"
 #include "gba.hpp"
 #include "scheduler.hpp"
+#include "arm7tdmidisasm.hpp"
 #include "types.hpp"
+#include <cstdio>
 
 GBACPU::GBACPU(GameBoyAdvance& bus_) : ARM7TDMI(bus_) {
-	pauseCpu = false;
 	traceInstructions = false;
 	logInterrupts = false;
 
@@ -13,6 +14,10 @@ GBACPU::GBACPU(GameBoyAdvance& bus_) : ARM7TDMI(bus_) {
 }
 
 void GBACPU::reset() {
+	IE = 0;
+	IF = 0;
+	IME = false;
+
 	resetARM7TDMI();
 }
 
@@ -20,41 +25,48 @@ void GBACPU::run() { // Emulator thread is run from here
 	while (1) {
 		processThreadEvents();
 
-		if (running && !bus.apu.apuBlock) {
-			systemEvents.recalculate = false;
-			u64 cyclesToRun = systemEvents.cyclesUntilNextEvent();
+		while (running && !bus.apu.apuBlock) {
+			if (!halted) {
+				//printf("r0:0x%08X r1:0x%08X r2:0x%08X r3:0x%08X r4:0x%08X r5:0x%08X r6:0x%08X r7:0x%08X r8:0x%08X r9:0x%08X r10:0x%08X r11:0x%08X r12:0x%08X r13:0x%08X r14:0x%08X r15:0x%08X cpsr:0x%08X\n", reg.R[0], reg.R[1], reg.R[2], reg.R[3], reg.R[4], reg.R[5], reg.R[6], reg.R[7], reg.R[8], reg.R[9], reg.R[10], reg.R[11], reg.R[12], reg.R[13], reg.R[14], reg.R[15], reg.CPSR);
+				cycle();
 
-			for (u64 i = 0; ((i < cyclesToRun) && !systemEvents.recalculate); i++) {
-				if (!pauseCpu) [[likely]] {
-					if (traceInstructions && (pipelineStage == 3)) {
-						std::string disasm;
-						std::string logLine;
-						if (reg.thumbMode) {
-							disasm = disassemble(reg.R[15] - 4, pipelineOpcode3, true);
-							logLine = fmt::format("0x{:0>7X} |     0x{:0>4X} | {}\n", reg.R[15] - 4, pipelineOpcode3, disasm);
-						} else {
-							disasm = disassemble(reg.R[15] - 8, pipelineOpcode3, false);
-							logLine = fmt::format("0x{:0>7X} | 0x{:0>8X} | {}\n", reg.R[15] - 8, pipelineOpcode3, disasm);
-						}
-
-						if (logLine.compare(previousLogLine)) {
-							bus.log << logLine;
-							previousLogLine = logLine;
-						}
+				if (traceInstructions && (pipelineStage == 3)) {
+					std::string disasm;
+					std::string logLine;
+					if (reg.thumbMode) {
+						disasm = disassembler.disassemble(reg.R[15] - 4, pipelineOpcode3, true);
+						logLine = fmt::format("0x{:0>7X} |     0x{:0>4X} | {}\n", reg.R[15] - 4, pipelineOpcode3, disasm);
+					} else {
+						disasm = disassembler.disassemble(reg.R[15] - 8, pipelineOpcode3, false);
+						logLine = fmt::format("0x{:0>7X} | 0x{:0>8X} | {}\n", reg.R[15] - 8, pipelineOpcode3, disasm);
 					}
 
-					cycle();
+					if (logLine.compare(previousLogLine)) {
+						bus.log << logLine;
+						previousLogLine = logLine;
+					}
 				}
-				++systemEvents.currentTime;
-				//printf("r0:0x%08X r1:0x%08X r2:0x%08X r3:0x%08X r4:0x%08X r5:0x%08X r6:0x%08X r7:0x%08X r8:0x%08X r9:0x%08X r10:0x%08X r11:0x%08X r12:0x%08X r13:0x%08X r14:0x%08X r15:0x%08X cpsr:0x%08X\n\n", reg.R[0], reg.R[1], reg.R[2], reg.R[3], reg.R[4], reg.R[5], reg.R[6], reg.R[7], reg.R[8], reg.R[9], reg.R[10], reg.R[11], reg.R[12], reg.R[13], reg.R[14], reg.R[15], reg.CPSR);
-			}
-
-			if (!systemEvents.recalculate && (systemEvents.eventQueue.top().callback != nullptr)) {
-				(*systemEvents.eventQueue.top().callback)(systemEvents.eventQueue.top().userData);
-				systemEvents.eventQueue.pop();
+			} else {
+				systemEvents.tickScheduler(1);
 			}
 		}
 	}
+}
+
+void GBACPU::softwareInterrupt(u32 opcode) {
+	ARM7TDMI::softwareInterrupt(opcode);
+}
+
+void GBACPU::thumbSoftwareInterrupt(u16 opcode) {
+	ARM7TDMI::thumbSoftwareInterrupt(opcode);
+}
+
+void GBACPU::testInterrupt() {
+	if (halted && (IE & IF))
+		halted = false;
+
+	if (!reg.irqDisable && IME && (IE & IF))
+		processIrq = true;
 }
 
 void GBACPU::requestInterrupt(irqType bit) {
@@ -80,8 +92,10 @@ void GBACPU::requestInterrupt(irqType bit) {
 		case IRQ_GAMEPAK: bus.log << "Gamepak"; break;
 		}
 
-		bus.log << "\n";
+		bus.log << "  Line: " << bus.ppu.currentScanline << "\n";
 	}
+
+	testInterrupt();
 }
 
 void GBACPU::stopEvent(void *object) {

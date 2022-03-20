@@ -27,62 +27,8 @@ void GBADMA::reset() {
 	DMA3SAD = DMA3DAD = DMA3CNT.raw = 0;
 }
 
-void GBADMA::dmaEndEvent(void *object) {
-	static_cast<GBADMA *>(object)->dmaEnd();
-}
-
-void GBADMA::dmaEnd() {
-	bus.cpu.pauseCpu = false;
-
-	switch (currentDma) {
-	case 0:
-		if (internalDMA0CNT.dstControl == 3)
-			internalDMA0DAD = DMA0DAD;
-		
-		if (internalDMA0CNT.requestInterrupt)
-			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA0);
-
-		if (!internalDMA0CNT.repeat)
-			DMA0CNT.enable = false;
-		internalDMA0CNT = DMA0CNT;
-		break;
-	case 1:
-		if (internalDMA1CNT.dstControl == 3)
-			internalDMA1DAD = DMA1DAD;
-		
-		if (internalDMA1CNT.requestInterrupt)
-			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA1);
-
-		if (!internalDMA1CNT.repeat)
-			DMA1CNT.enable = false;
-		internalDMA1CNT = DMA1CNT;
-		break;
-	case 2:
-		if (internalDMA2CNT.dstControl == 3)
-			internalDMA2DAD = DMA2DAD;
-		
-		if (internalDMA2CNT.requestInterrupt)
-			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA2);
-
-		if (!internalDMA2CNT.repeat)
-			DMA2CNT.enable = false;
-		internalDMA2CNT = DMA2CNT;
-		break;
-	case 3:
-		if (internalDMA3CNT.dstControl == 3)
-			internalDMA3DAD = DMA3DAD;
-		
-		if (internalDMA3CNT.requestInterrupt)
-			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA3);
-
-		if (!internalDMA3CNT.repeat)
-			DMA3CNT.enable = false;
-		internalDMA3CNT = DMA3CNT;
-		break;
-	}
-
-	currentDma = -1;
-	checkDma();
+void GBADMA::dmaCheckEvent(void *object) {
+	static_cast<GBADMA *>(object)->checkDma();
 }
 
 void GBADMA::onVBlank() {
@@ -94,7 +40,7 @@ void GBADMA::onVBlank() {
 		dma2Queued = true;
 	if ((currentDma != 3) && internalDMA3CNT.enable && (internalDMA3CNT.timing == 1))
 		dma3Queued = true;
-	
+
 	checkDma();
 }
 
@@ -107,7 +53,7 @@ void GBADMA::onHBlank() {
 		dma2Queued = true;
 	if ((currentDma != 3) && internalDMA3CNT.enable && (internalDMA3CNT.timing == 2))
 		dma3Queued = true;
-	
+
 	checkDma();
 }
 
@@ -141,6 +87,8 @@ void GBADMA::checkDma() {
 
 template <int channel>
 void GBADMA::doDma() {
+	bus.internalCycle(1);
+
 	u32 *sourceAddress;
 	u32 *destinationAddress;
 	DmaControlBits *control;
@@ -180,11 +128,15 @@ void GBADMA::doDma() {
 		break;
 	}
 
+	//if ((*sourceAddress >= 0x8000000) && (*destinationAddress >= 0x8000000))
+	//	bus.internalCycle(2);
+
 	int length = control->numTransfers;
 	if (length == 0)
 		length = (channel == 3) ? 0x10000 : 0x4000;
 
 	// TODO: Create shaddow DMACNT registers
+	// TODO: Find if force alignment is kept in internal src/dst registers
 	if ((control->srcControl < 3) && (*sourceAddress >= 0x8000000) && (*sourceAddress < 0xE000000))
 		control->srcControl = 0;
 	if (((channel == 1) || (channel == 2)) && (control->timing == 3)) {
@@ -218,13 +170,16 @@ void GBADMA::doDma() {
 		bus.log << "\nScanline " << bus.ppu.currentScanline << "\n";
 	}
 
+	bool hasTransfered = false;
 	if (control->transferSize) { // 32 bit
 		for (int i = 0; i < length; i++) {
 			if (*sourceAddress < 0x2000000) {
-				bus.write<u32>(*destinationAddress & ~3, *openBus);
+				bus.write<u32>(*destinationAddress & ~3, *openBus, hasTransfered);
 			} else {
-				u32 data = bus.read<u32>(*sourceAddress & ~3);
-				bus.write<u32>(*destinationAddress & ~3, data);
+				u32 data = bus.read<u32>(*sourceAddress & ~3, hasTransfered);
+				if (!hasTransfered && (*sourceAddress >= 0x8000000) && (*destinationAddress >= 0x8000000))
+					hasTransfered = true;
+				bus.write<u32>(*destinationAddress & ~3, data, hasTransfered);
 				*openBus = data;
 			}
 
@@ -239,14 +194,18 @@ void GBADMA::doDma() {
 			} else if (control->srcControl == 1) { // Decrement
 				*sourceAddress -= 4;
 			}
+
+			hasTransfered = true;
 		}
 	} else { // 16 bit
 		for (int i = 0; i < length; i++) {
 			if (*sourceAddress < 0x2000000) {
-				bus.write<u16>(*destinationAddress & ~1, (u16)*openBus);
+				bus.write<u16>(*destinationAddress & ~1, (u16)*openBus, hasTransfered);
 			} else {
-				u16 data = bus.read<u16>(*sourceAddress & ~1);
-				bus.write<u16>(*destinationAddress & ~1, data);
+				u16 data = bus.read<u16>(*sourceAddress & ~1, hasTransfered);
+				if (!hasTransfered && (*sourceAddress >= 0x8000000) && (*destinationAddress >= 0x8000000))
+					hasTransfered = true;
+				bus.write<u16>(*destinationAddress & ~1, data, hasTransfered);
 				*openBus = (data << 16) | data;
 			}
 
@@ -261,13 +220,67 @@ void GBADMA::doDma() {
 			} else if (control->srcControl == 1) { // Decrement
 				*sourceAddress -= 2;
 			}
+
+			hasTransfered = true;
 		}
 	}
 	*destinationAddress &= 0x07FFFFFF;
 	*sourceAddress &= 0x0FFFFFFF;
 
-	bus.cpu.pauseCpu = true;
-	systemEvents.addEvent(1, dmaEndEvent, this);
+	dmaEnd();
+	bus.internalCycle(1);
+}
+
+void GBADMA::dmaEnd() {
+	switch (currentDma) {
+	case 0:
+		if (internalDMA0CNT.dstControl == 3)
+			internalDMA0DAD = DMA0DAD;
+
+		if (internalDMA0CNT.requestInterrupt)
+			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA0);
+
+		if (!internalDMA0CNT.repeat)
+			DMA0CNT.enable = false;
+		internalDMA0CNT = DMA0CNT;
+		break;
+	case 1:
+		if (internalDMA1CNT.dstControl == 3)
+			internalDMA1DAD = DMA1DAD;
+
+		if (internalDMA1CNT.requestInterrupt)
+			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA1);
+
+		if (!internalDMA1CNT.repeat)
+			DMA1CNT.enable = false;
+		internalDMA1CNT = DMA1CNT;
+		break;
+	case 2:
+		if (internalDMA2CNT.dstControl == 3)
+			internalDMA2DAD = DMA2DAD;
+
+		if (internalDMA2CNT.requestInterrupt)
+			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA2);
+
+		if (!internalDMA2CNT.repeat)
+			DMA2CNT.enable = false;
+		internalDMA2CNT = DMA2CNT;
+		break;
+	case 3:
+		if (internalDMA3CNT.dstControl == 3)
+			internalDMA3DAD = DMA3DAD;
+
+		if (internalDMA3CNT.requestInterrupt)
+			bus.cpu.requestInterrupt(GBACPU::IRQ_DMA3);
+
+		if (!internalDMA3CNT.repeat)
+			DMA3CNT.enable = false;
+		internalDMA3CNT = DMA3CNT;
+		break;
+	}
+
+	currentDma = -1;
+	checkDma();
 }
 
 u8 GBADMA::readIO(u32 address) {
@@ -357,7 +370,8 @@ void GBADMA::writeIO(u32 address, u8 value) {
 
 			if (internalDMA0CNT.timing == 0) {
 				dma0Queued = true;
-				checkDma();
+				//checkDma();
+				systemEvents.addEvent(2, dmaCheckEvent, this); // TODO: Check how long this is and when it happens
 			}
 		}
 		break;
@@ -405,7 +419,8 @@ void GBADMA::writeIO(u32 address, u8 value) {
 
 			if (internalDMA1CNT.timing == 0) {
 				dma1Queued = true;
-				checkDma();
+				//checkDma();
+				systemEvents.addEvent(2, dmaCheckEvent, this);
 			}
 		}
 		break;
@@ -453,7 +468,8 @@ void GBADMA::writeIO(u32 address, u8 value) {
 
 			if (internalDMA2CNT.timing == 0) {
 				dma2Queued = true;
-				checkDma();
+				//checkDma();
+				systemEvents.addEvent(2, dmaCheckEvent, this);
 			}
 		}
 		break;
@@ -501,7 +517,8 @@ void GBADMA::writeIO(u32 address, u8 value) {
 
 			if (internalDMA3CNT.timing == 0) {
 				dma3Queued = true;
-				checkDma();
+				//checkDma();
+				systemEvents.addEvent(2, dmaCheckEvent, this);
 			}
 		}
 		break;

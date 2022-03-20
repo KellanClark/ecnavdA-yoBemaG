@@ -4,26 +4,18 @@
 #include "scheduler.hpp"
 #include "types.hpp"
 #include <bit>
+#include <cstdio>
+
+#define iCycle(x) bus.internalCycle(x)
 
 ARM7TDMI::ARM7TDMI(GameBoyAdvance& bus_) : bus(bus_) {
-	disassemblerOptions.showALCondition = false;
-	disassemblerOptions.alwaysShowSBit = false;
-	disassemblerOptions.printOperandsHex = true;
-	disassemblerOptions.printAddressesHex = true;
-	disassemblerOptions.simplifyRegisterNames = false;
-	disassemblerOptions.simplifyPushPop = false;
-	disassemblerOptions.ldmStmStackSuffixes = false;
-
 	resetARM7TDMI();
 }
 
 void ARM7TDMI::resetARM7TDMI() {
-	IE = 0;
-	IF = 0;
-	IME = false;
+	processIrq = false;
 
 	pipelineStage = 0;
-	incrementR15 = false;
 
 	reg.R[0] = 0x00000000;
 	reg.R[1] = 0x00000000;
@@ -57,58 +49,41 @@ void ARM7TDMI::resetARM7TDMI() {
 }
 
 void ARM7TDMI::cycle() {
-	if (halted && (IE & IF))
-		halted = false;
+	if (pipelineStage == 0)
+		flushPipeline();
+	if (processIrq) { // Service interrupt
+		processIrq = false;
 
-	if ((pipelineStage == 3) && !halted) {
-		if (!reg.irqDisable && IME && (IE & IF)) { // Service interrupt
-			bool oldThumb = reg.thumbMode;
-			bankRegisters(MODE_IRQ, true);
-			if (oldThumb)
-				reg.R[14] += 2;
+		//fetchOpcode();
+		//reg.R[15] -= reg.thumbMode ? 2 : 4;
+		bool oldThumb = reg.thumbMode;
+		bankRegisters(MODE_IRQ, true);
+		reg.R[14] = reg.R[15] - (oldThumb ? 0 : 4);
 
-			reg.irqDisable = true;
-			reg.fiqDisable = true;
-			reg.thumbMode = false;
+		reg.irqDisable = true;
+		reg.fiqDisable = true;
+		reg.thumbMode = false;
 
-			reg.R[15] = 0x18;
-			pipelineStage = 1;
-			incrementR15 = false;
+		reg.R[15] = 0x18;
+		flushPipeline();
+	} else {
+		if (reg.thumbMode) {
+			u16 lutIndex = pipelineOpcode3 >> 6;
+			(this->*thumbLUT[lutIndex])((u16)pipelineOpcode3);
 		} else {
-			if (reg.thumbMode) {
-				u16 lutIndex = pipelineOpcode3 >> 6;
-				(this->*thumbLUT[lutIndex])((u16)pipelineOpcode3);
+			if (checkCondition(pipelineOpcode3 >> 28)) {
+				u32 lutIndex = ((pipelineOpcode3 & 0x0FF00000) >> 16) | ((pipelineOpcode3 & 0x000000F0) >> 4);
+				(this->*LUT[lutIndex])(pipelineOpcode3);
 			} else {
-				if (checkCondition(pipelineOpcode3 >> 28)) {
-					u32 lutIndex = ((pipelineOpcode3 & 0x0FF00000) >> 16) | ((pipelineOpcode3 & 0x000000F0) >> 4);
-					(this->*LUT[lutIndex])(pipelineOpcode3);
-				}
+				fetchOpcode();
 			}
 		}
-	} else {
-		++pipelineStage;
-	}
-
-	if (reg.thumbMode) {
-		if (incrementR15)
-			reg.R[15] += 2;
-		incrementR15 = true;
-
-		pipelineOpcode3 = pipelineOpcode2;
-		pipelineOpcode2 = pipelineOpcode1;
-		pipelineOpcode1 = bus.read<u16>(reg.R[15]);
-	} else {
-		if (incrementR15)
-			reg.R[15] += 4;
-		incrementR15 = true;
-
-		pipelineOpcode3 = pipelineOpcode2;
-		pipelineOpcode2 = pipelineOpcode1;
-		pipelineOpcode1 = bus.read<u32>(reg.R[15]);
 	}
 
 	//if (reg.R[15] == (0x8000180 + 4))
 	//	unknownOpcodeArm(pipelineOpcode3, "BKPT");
+	//if (reg.R[15] == (0x8025396 + 4))
+	//	printf("0x%08X\n", reg.R[1]);
 }
 
 inline bool ARM7TDMI::checkCondition(int condtionCode) {
@@ -128,10 +103,47 @@ inline bool ARM7TDMI::checkCondition(int condtionCode) {
 	case 0xC: return !reg.flagZ && (reg.flagN == reg.flagV);
 	case 0xD: return reg.flagZ || (reg.flagN != reg.flagV);
 	case 0xE: return true;
+	case 0xF: return true;
 	default:
 		unknownOpcodeArm(pipelineOpcode3, "Invalid condition");
 		return false;
 	}
+}
+
+inline void ARM7TDMI::fetchOpcode() {
+	if (reg.thumbMode) {
+		pipelineOpcode1 = bus.read<u16>(reg.R[15], nextFetchType);
+		pipelineOpcode3 = pipelineOpcode2;
+		pipelineOpcode2 = pipelineOpcode1;
+
+		reg.R[15] += 2;
+	} else {
+		pipelineOpcode1 = bus.read<u32>(reg.R[15], nextFetchType);
+		pipelineOpcode3 = pipelineOpcode2;
+		pipelineOpcode2 = pipelineOpcode1;
+
+		reg.R[15] += 4;
+	}
+
+	nextFetchType = true;
+}
+
+void ARM7TDMI::flushPipeline() {
+	pipelineStage = 3;
+
+	if (reg.thumbMode) {
+		reg.R[15] &= ~1;
+		pipelineOpcode3 = bus.read<u16>(reg.R[15], false);
+		pipelineOpcode2 = bus.read<u16>(reg.R[15] + 2, true);
+		reg.R[15] += 4;
+	} else {
+		reg.R[15] &= ~3;
+		pipelineOpcode3 = bus.read<u32>(reg.R[15], false);
+		pipelineOpcode2 = bus.read<u32>(reg.R[15] + 4, true);
+		reg.R[15] += 8;
+	}
+
+	nextFetchType = true;
 }
 
 /* Instruction Decoding/Executing */
@@ -202,694 +214,6 @@ static const u16 thumbUncondtionalBranchBits = 0b1110'0000'00;
 static const u16 thumbLongBranchLinkMask = 0b1111'0000'00;
 static const u16 thumbLongBranchLinkBits = 0b1111'0000'00;
 
-std::string ARM7TDMI::disassemble(u32 address, u32 opcode, bool thumb) {
-	std::stringstream disassembledOpcode;
-
-	// Get condition code
-	std::string condtionCode;
-	switch (thumb ? ((opcode >> 8) & 0xF) : (opcode >> 28)) {
-	case 0x0: condtionCode = "EQ"; break;
-	case 0x1: condtionCode = "NE"; break;
-	case 0x2: condtionCode = "CS"; break;
-	case 0x3: condtionCode = "CC"; break;
-	case 0x4: condtionCode = "MI"; break;
-	case 0x5: condtionCode = "PL"; break;
-	case 0x6: condtionCode = "VS"; break;
-	case 0x7: condtionCode = "VC"; break;
-	case 0x8: condtionCode = "HI"; break;
-	case 0x9: condtionCode = "LS"; break;
-	case 0xA: condtionCode = "GE"; break;
-	case 0xB: condtionCode = "LT"; break;
-	case 0xC: condtionCode = "GT"; break;
-	case 0xD: condtionCode = "LE"; break;
-	case 0xE: condtionCode = disassemblerOptions.showALCondition ? "AL" : ""; break;
-	default: return "Undefined";
-	}
-
-	if (thumb) {
-		u16 lutIndex = opcode >> 6;
-		if ((lutIndex & thumbAddSubtractMask) == thumbAddSubtractBits) {
-			bool immediate = lutIndex & 0b0000'0100'00;
-			bool op = lutIndex & 0b0000'0010'00;
-			int offset = lutIndex & 0b0000'0001'11;
-
-			disassembledOpcode << (op ? "SUB " : "ADD ");
-
-			disassembledOpcode << getRegName(opcode & 7) << ", " << getRegName((opcode >> 3) & 7) << ", ";
-			if (immediate) {
-				disassembledOpcode << "#";
-				if (disassemblerOptions.printOperandsHex)
-					disassembledOpcode << "0x" << std::hex;
-				disassembledOpcode << offset;
-			} else {
-				disassembledOpcode << getRegName(offset);
-			}
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbMoveShiftedRegMask) == thumbMoveShiftedRegBits) {
-			int op = (lutIndex & 0b0001'1000'00) >> 5;
-			int shiftAmount = lutIndex & 0b0000'0111'11;
-
-			switch (op) {
-			case 0: disassembledOpcode << "LSL"; break;
-			case 1: disassembledOpcode << "LSR"; break;
-			case 2: disassembledOpcode << "ASR"; break;
-			}
-
-			disassembledOpcode << " " << getRegName(opcode & 7) << ", " << getRegName((opcode >> 3) & 7) << ", #";
-			
-			if ((shiftAmount == 0) && (op != 0))
-				shiftAmount = 32;
-			disassembledOpcode << shiftAmount;
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbAluImmediateMask) == thumbAluImmediateBits) {
-			int op = (lutIndex & 0b0001'1000'00) >> 5;
-			int destinationReg = (lutIndex & 0b0000'0111'00) >> 2;
-
-			switch (op) {
-			case 0: disassembledOpcode << "MOV"; break;
-			case 1: disassembledOpcode << "CMP"; break;
-			case 2: disassembledOpcode << "ADD"; break;
-			case 3: disassembledOpcode << "SUB"; break;
-			}
-
-			disassembledOpcode << " " << getRegName(destinationReg) << ", #";
-			if (disassemblerOptions.printOperandsHex) {
-				disassembledOpcode << "0x" << std::hex;
-			}
-			disassembledOpcode << (opcode & 0xFF);
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbAluRegMask) == thumbAluRegBits) {
-			int op = lutIndex & 0b0000'0011'11;
-
-			switch (op) {
-			case 0x0: disassembledOpcode << "AND"; break;
-			case 0x1: disassembledOpcode << "EOR"; break;
-			case 0x2: disassembledOpcode << "LSL"; break;
-			case 0x3: disassembledOpcode << "LSR"; break;
-			case 0x4: disassembledOpcode << "ASR"; break;
-			case 0x5: disassembledOpcode << "ADC"; break;
-			case 0x6: disassembledOpcode << "SBC"; break;
-			case 0x7: disassembledOpcode << "ROR"; break;
-			case 0x8: disassembledOpcode << "TST"; break;
-			case 0x9: disassembledOpcode << "NEG"; break;
-			case 0xA: disassembledOpcode << "CMP"; break;
-			case 0xB: disassembledOpcode << "CMN"; break;
-			case 0xC: disassembledOpcode << "ORR"; break;
-			case 0xD: disassembledOpcode << "MUL"; break;
-			case 0xE: disassembledOpcode << "BIC"; break;
-			case 0xF: disassembledOpcode << "MVN"; break;
-			}
-
-			disassembledOpcode << " " << getRegName(opcode & 7) << ", " << getRegName((opcode >> 3) & 7);
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbHighRegOperationMask) == thumbHighRegOperationBits) {
-			int op = (lutIndex & 0b0000'0011'00) >> 2;
-			bool opFlag1 = lutIndex & 0b0000'0000'10;
-			bool opFlag2 = lutIndex & 0b0000'0000'01;
-
-			switch (op) {
-			case 0: disassembledOpcode << "ADD "; break;
-			case 1: disassembledOpcode << "CMP "; break;
-			case 2: disassembledOpcode << "MOV "; break;
-			case 3: disassembledOpcode << "BX "; break;
-			}
-
-			if (op != 3)
-				disassembledOpcode << getRegName((opcode & 0x7) + (opFlag1 ? 8 : 0)) << ", ";
-			disassembledOpcode << getRegName(((opcode >> 3) & 0x7) + (opFlag2 ? 8 : 0));
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbPcRelativeLoadMask) == thumbPcRelativeLoadBits) {
-			int destinationReg = (lutIndex & 0b0000'0111'00) >> 2;
-
-			disassembledOpcode << "LDR " << getRegName(destinationReg) << ", [" << getRegName(15) << ", ";
-			
-			if (disassemblerOptions.printOperandsHex)
-				disassembledOpcode << "0x" << std::hex;
-			disassembledOpcode << ((opcode & 0xFF) << 2) << "]";
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbLoadStoreRegOffsetMask) == thumbLoadStoreRegOffsetBits) {
-			bool loadStore = lutIndex & 0b0000'1000'00;
-			bool byteWord = lutIndex & 0b0000'0100'00;
-			int offsetReg = lutIndex & 0b0000'0001'11;
-
-			// I was lazy and put this all on one line
-			disassembledOpcode << (loadStore ? "LDR" : "STR") << (byteWord ? "B " : " ") << getRegName(opcode & 7) << ", [" << getRegName((opcode >> 3) & 7) << ", " << getRegName(offsetReg) << "]";
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbLoadStoreSextMask) == thumbLoadStoreSextBits) {
-			int hsBits = (lutIndex & 0b0000'1100'00) >> 4;
-			int offsetReg = lutIndex & 0b0000'0001'11;
-
-			switch (hsBits) {
-			case 0: disassembledOpcode << "STRH "; break;
-			case 1: disassembledOpcode << "LDSB "; break;
-			case 2: disassembledOpcode << "LDRH "; break;
-			case 3: disassembledOpcode << "LDSH "; break;
-			}
-
-			disassembledOpcode << getRegName(opcode & 7) << ", [" << getRegName((opcode >> 3) & 7) << ", " << getRegName(offsetReg) << "]";
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbLoadStoreImmediateOffsetMask) == thumbLoadStoreImmediateOffsetBits) {
-			bool byteWord = lutIndex & 0b0001'0000'00;
-			bool loadStore = lutIndex & 0b0000'1000'00;
-			int offset = lutIndex & 0b0000'0111'11;
-
-			disassembledOpcode << (loadStore ? "LDR" : "STR") << (byteWord ? "B " : " ");
-			disassembledOpcode << getRegName(opcode & 7) << ", [" << getRegName((opcode >> 3) & 7) << ", #";
-			if (disassemblerOptions.printOperandsHex)
-				disassembledOpcode << "0x" << std::hex;
-			disassembledOpcode << (byteWord ? offset : (offset << 2)) << "]";
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbLoadStoreHalfwordMask) == thumbLoadStoreHalfwordBits) {
-			bool loadStore = lutIndex & 0b0000'1000'00;
-			int offset = lutIndex & 0b0000'0111'11;
-
-			disassembledOpcode << (loadStore ? "LDRH " : "STRH ");
-			disassembledOpcode << getRegName(opcode & 7) << ", [" << getRegName((opcode >> 3) & 7) << ", #";
-			if (disassemblerOptions.printOperandsHex)
-				disassembledOpcode << "0x" << std::hex;
-			disassembledOpcode << (offset << 1) << "]";
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbSpRelativeLoadStoreMask) == thumbSpRelativeLoadStoreBits) {
-			bool loadStore = lutIndex & 0b0000'1000'00;
-			int destinationReg = (lutIndex & 0b0000'0111'00) >> 2;
-
-			disassembledOpcode << (loadStore ? "LDR " : "STR ") << getRegName(destinationReg) << ", [" << getRegName(13) << ", #";
-			if (disassemblerOptions.printOperandsHex)
-				disassembledOpcode << "0x" << std::hex;
-			disassembledOpcode << ((opcode & 0xFF) << 2) << "]";
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbLoadAddressMask) == thumbLoadAddressBits) {
-			bool spPc = lutIndex & 0b0000'1000'00;
-			int destinationReg = (lutIndex & 0b0000'0111'00) >> 2;
-
-			disassembledOpcode << "ADD " << getRegName(destinationReg) << ", " << getRegName(spPc ? 13 : 15) << ", #";
-			if (disassemblerOptions.printOperandsHex) {
-				disassembledOpcode << "0x" << std::hex;
-			}
-			disassembledOpcode << ((opcode & 0xFF) << 2);
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbSpAddOffsetMask) == thumbSpAddOffsetBits) {
-			bool isNegative = lutIndex & 0b0000'0000'10;
-
-			disassembledOpcode << "ADD sp, #";
-			if (disassemblerOptions.printOperandsHex)
-				disassembledOpcode << "0x" << std::hex;
-			disassembledOpcode << (isNegative ? "-" : "") << ((opcode & 0x7F) << 2);
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbPushPopRegistersMask) == thumbPushPopRegistersBits) {
-			bool loadStore = lutIndex & 0b0000'1000'00;
-			bool pcLr = lutIndex & 0b0000'0001'00;
-
-			disassembledOpcode << (loadStore ? "POP" : "PUSH") << " {";
-
-			bool registerList[10] = {false};
-			for (int i = 0; i < 8; i++)
-				registerList[i] = (opcode & (1 << i));
-
-			bool hasPrintedRegister = false;
-			for (int i = 0; i < 8; i++) {
-				if (registerList[i]) {
-					disassembledOpcode << (hasPrintedRegister ? "," : "") << getRegName(i);
-					hasPrintedRegister = true;
-
-					if (registerList[i + 1] && registerList[i + 2]) {
-						disassembledOpcode << "-";
-						do {
-							++i;
-						} while (registerList[i + 1]);
-						disassembledOpcode << getRegName(i);
-					}
-				}
-			}
-			if (pcLr)
-				disassembledOpcode << (hasPrintedRegister ? "," : "") << getRegName(loadStore ? 15 : 14);
-			disassembledOpcode << "}";
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbMultipleLoadStoreMask) == thumbMultipleLoadStoreBits) {
-			bool loadStore = lutIndex & 0b0000'1000'00;
-			int baseReg = (lutIndex & 0b0000'0111'00) >> 2;
-
-			disassembledOpcode << (loadStore ? "LDMIA " : "STMIA ") << getRegName(baseReg) << "!, {";
-
-			bool registerList[10] = {false};
-			for (int i = 0; i < 8; i++)
-				registerList[i] = (opcode & (1 << i));
-
-			bool hasPrintedRegister = false;
-			for (int i = 0; i < 8; i++) {
-				if (registerList[i]) {
-					disassembledOpcode << (hasPrintedRegister ? "," : "") << getRegName(i);
-					hasPrintedRegister = true;
-
-					if (registerList[i + 1] && registerList[i + 2]) {
-						disassembledOpcode << "-";
-						do {
-							++i;
-						} while (registerList[i + 1]);
-						disassembledOpcode << getRegName(i);
-					}
-				}
-			}
-			disassembledOpcode << "}";
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbSoftwareInterruptMask) == thumbSoftwareInterruptBits) {
-			if (disassemblerOptions.printAddressesHex) {
-				disassembledOpcode << "SWI" << condtionCode << " #0x" << std::hex << (opcode & 0x00FF);
-			} else {
-				disassembledOpcode << "SWI" << condtionCode << " #" << (opcode & 0x00FF);
-			}
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbConditionalBranchMask) == thumbConditionalBranchBits) {
-			u32 jmpAddress = address + ((i16)((u16)opcode << 8) >> 7) + 4;
-
-			disassembledOpcode << "B" << condtionCode << " #";
-			if (disassemblerOptions.printAddressesHex)
-				disassembledOpcode << "0x" << std::hex;
-			disassembledOpcode << jmpAddress;
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbUncondtionalBranchMask) == thumbUncondtionalBranchBits) {
-			u32 jmpAddress = address + ((i16)((u16)opcode << 5) >> 4) + 4;
-
-			disassembledOpcode << "B #";
-			if (disassemblerOptions.printAddressesHex)
-				disassembledOpcode << "0x" << std::hex;
-			disassembledOpcode << jmpAddress;
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbLongBranchLinkMask) == thumbLongBranchLinkBits) {
-			bool lowHigh = lutIndex & 0b0000'1000'00;
-
-			if (lowHigh) {
-				disassembledOpcode << "ADD " << getRegName(14) << ", " << getRegName(14) << ", #";
-				if (disassemblerOptions.printOperandsHex)
-					disassembledOpcode << "0x" << std::hex;
-				disassembledOpcode << ((opcode & 0x7FF) << 1);
-
-				disassembledOpcode << "; BL " << getRegName(14);
-			} else {
-				disassembledOpcode << "ADD " << getRegName(14) << ", " << getRegName(15) << ", #";
-				if (disassemblerOptions.printOperandsHex)
-					disassembledOpcode << "0x" << std::hex;
-				disassembledOpcode << ((i32)((u32)opcode << 21) >> 9);
-				
-			}
-
-			return disassembledOpcode.str();
-		}
-
-		return "Undefined THUMB";
-	} else {
-		u32 lutIndex = ((opcode & 0x0FF00000) >> 16) | ((opcode & 0x000000F0) >> 4);
-		if ((lutIndex & armMultiplyMask) == armMultiplyBits) {
-			bool accumulate = lutIndex & 0b0000'0010'0000;
-			bool sBit = lutIndex & 0b0000'0001'0000;
-
-			if (accumulate) {
-				disassembledOpcode << "MLA";
-			} else {
-				disassembledOpcode << "MUL";
-			}
-			disassembledOpcode << condtionCode << (sBit ? "S" : "") << " ";
-			disassembledOpcode << getRegName((opcode >> 16) & 0xF) << ", " << getRegName(opcode & 0xF) << ", " << getRegName((opcode >> 8) & 0xF);
-
-			if (accumulate)
-				disassembledOpcode << ", " << getRegName((opcode >> 12) & 0xF);
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armMultiplyLongMask) == armMultiplyLongBits) {
-			bool signedMul = lutIndex & 0b0000'0100'0000;
-			bool accumulate = lutIndex & 0b0000'0010'0000;
-			bool sBit = lutIndex & 0b0000'0001'0000;
-
-			disassembledOpcode << (signedMul ? "S" : "U");
-			if (accumulate) {
-				disassembledOpcode << "MLAL";
-			} else {
-				disassembledOpcode << "MULL";
-			}
-			disassembledOpcode << condtionCode << (sBit ? "S" : "") << " ";
-			disassembledOpcode << getRegName((opcode >> 12) & 0xF) << ", " << getRegName((opcode >> 16) & 0xF) << ", " << getRegName(opcode & 0xF) << ", " << getRegName((opcode >> 8) & 0xF);
-
-			if (accumulate)
-				disassembledOpcode << ", " << getRegName((opcode >> 12) & 0xF);
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armSingleDataSwapMask) == armSingleDataSwapBits) {
-			bool byteWord = lutIndex & 0b0000'0100'0000;
-
-			disassembledOpcode << "SWP" << condtionCode << (byteWord ? "B " : " ");
-			disassembledOpcode << getRegName((opcode >> 12) & 0xF) << ", " << getRegName(opcode & 0xF) << ", [" << getRegName((opcode >> 16) & 0xF) << "]";
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armPsrLoadMask) == armPsrLoadBits) {
-			bool targetPSR = lutIndex & 0b0000'0100'0000;
-
-			disassembledOpcode << "MRS" << condtionCode << " ";
-			disassembledOpcode << getRegName((opcode >> 12) & 0xF) << ", " << (targetPSR ? "SPSR" : "CPSR");
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armPsrStoreRegMask) == armPsrStoreRegBits) {
-			bool targetPSR = lutIndex & 0b0000'0100'0000;
-
-			disassembledOpcode << "MSR" << condtionCode << " ";
-			disassembledOpcode << (targetPSR ? "SPSR_" : "CPSR_");
-
-			disassembledOpcode << ((opcode & (1 << 19)) ? "f" : "")
-							<< ((opcode & (1 << 18)) ? "s" : "")
-							<< ((opcode & (1 << 17)) ? "x" : "")
-							<< ((opcode & (1 << 16)) ? "c" : "") << ", ";
-
-			disassembledOpcode << getRegName(opcode & 0xF);
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armPsrStoreImmediateMask) == armPsrStoreImmediateBits) {
-			bool targetPSR = lutIndex & 0b0000'0100'0000;
-
-			disassembledOpcode << "MSR" << condtionCode << " ";
-			disassembledOpcode << (targetPSR ? "SPSR_" : "CPSR_");
-
-			disassembledOpcode << ((opcode & (1 << 19)) ? "f" : "")
-							<< ((opcode & (1 << 18)) ? "s" : "")
-							<< ((opcode & (1 << 17)) ? "x" : "")
-							<< ((opcode & (1 << 16)) ? "c" : "") << ", #";
-
-			if (disassemblerOptions.printOperandsHex)
-				disassembledOpcode << "0x" << std::hex;
-			u32 operand = opcode & 0xFF;
-			u32 shiftAmount = (opcode & (0xF << 8)) >> 7;
-			disassembledOpcode << (shiftAmount ? ((operand >> shiftAmount) | (operand << (32 - shiftAmount))) : operand);
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armBranchExchangeMask) == armBranchExchangeBits) {
-			disassembledOpcode << "BX" << condtionCode << " " << getRegName(opcode & 0xF);
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armHalfwordDataTransferMask) == armHalfwordDataTransferBits) {
-			bool prePostIndex = lutIndex & 0b0001'0000'0000;
-			bool upDown = lutIndex & 0b0000'1000'0000;
-			bool immediateOffset = lutIndex & 0b0000'0100'0000;
-			bool writeBack = lutIndex & 0b0000'0010'0000;
-			bool loadStore = lutIndex & 0b0000'0001'0000;
-			int shBits = (lutIndex & 0b0000'0000'0110) >> 1;
-
-			disassembledOpcode << (loadStore ? "LDR" : "STR") << condtionCode;
-			switch (shBits) {
-			case 0:
-				return "Undefined";
-			case 1:
-				disassembledOpcode << "H";
-				break;
-			case 2:
-				disassembledOpcode << "SB";
-				break;
-			case 3:
-				disassembledOpcode << "SH";
-				break;
-			}
-
-			disassembledOpcode << " r" << ((opcode >> 12) & 0xF) << ", [r" << ((opcode >> 16) & 0xF);
-
-			u32 offset;
-			if (immediateOffset) {
-				offset = ((opcode & 0xF00) >> 4) | (opcode & 0xF);
-				if (offset == 0) {
-					disassembledOpcode << "]";
-					return disassembledOpcode.str();
-				}
-			}
-
-			if (!prePostIndex)
-				disassembledOpcode << "]";
-			disassembledOpcode << ", ";
-
-			if (immediateOffset) {
-				disassembledOpcode << (upDown ? "#" : "#-") << offset;
-			} else {
-				disassembledOpcode << (upDown ? "+r" : "-r") << (opcode & 0xF);
-			}
-
-			if (prePostIndex)
-				disassembledOpcode << "]" << (writeBack ? "!" : "");
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armDataProcessingMask) == armDataProcessingBits) {
-			auto operation = (lutIndex & 0b0001'1110'0000) >> 5;
-			bool sBit = lutIndex & 0b0000'0001'0000;
-
-			bool printRd = true;
-			bool printRn = true;
-			switch (operation) {
-			case 0x0: disassembledOpcode << "AND"; break;
-			case 0x1: disassembledOpcode << "EOR"; break;
-			case 0x2: disassembledOpcode << "SUB"; break;
-			case 0x3: disassembledOpcode << "RSB"; break;
-			case 0x4: disassembledOpcode << "ADD"; break;
-			case 0x5: disassembledOpcode << "ADC"; break;
-			case 0x6: disassembledOpcode << "SBC"; break;
-			case 0x7: disassembledOpcode << "RSC"; break;
-			case 0x8: disassembledOpcode << "TST"; printRd = false; break;
-			case 0x9: disassembledOpcode << "TEQ"; printRd = false; break;
-			case 0xA: disassembledOpcode << "CMP"; printRd = false; break;
-			case 0xB: disassembledOpcode << "CMN"; printRd = false; break;
-			case 0xC: disassembledOpcode << "ORR"; break;
-			case 0xD: disassembledOpcode << "MOV"; printRn = false; break;
-			case 0xE: disassembledOpcode << "BIC"; break;
-			case 0xF: disassembledOpcode << "MVN"; printRn = false; break;
-			}
-			
-			if ((printRd && sBit) || disassemblerOptions.alwaysShowSBit)
-				disassembledOpcode << "S";
-			disassembledOpcode << condtionCode << " ";
-			if (printRd)
-				disassembledOpcode << "r" << (((0xF << 12) & opcode) >> 12) << ", ";
-			if (printRn)
-				disassembledOpcode << "r" << (((0xF << 16) & opcode) >> 16) << ", ";
-			
-			disassembledOpcode << disassembleShift(opcode, false);
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armUndefinedMask) == armUndefinedBits) {
-			return "Undefined";
-		} else if ((lutIndex & armSingleDataTransferMask) == armSingleDataTransferBits) {
-			bool immediateOffset = lutIndex & 0b0010'0000'0000;
-			bool prePostIndex = lutIndex & 0b0001'0000'0000;
-			bool byteWord = lutIndex & 0b0000'0100'0000;
-			bool writeBack = lutIndex & 0b0000'0010'0000;
-			bool loadStore = lutIndex & 0b0000'0001'0000;
-
-			disassembledOpcode << (loadStore ? "LDR" : "STR") << condtionCode << (byteWord ? "B " : " ");
-
-			disassembledOpcode << getRegName((opcode >> 12) & 0xF) << ", [" << getRegName((opcode >> 16) & 0xF);
-
-			if (immediateOffset && ((opcode & 0xFFF) == 0)) {
-				disassembledOpcode << "]";
-				return disassembledOpcode.str();
-			}
-
-			if (!prePostIndex) {
-				disassembledOpcode << "], ";
-			} else {
-				disassembledOpcode << ", ";
-			}
-			disassembledOpcode << disassembleShift(opcode, true);
-
-			if (prePostIndex)
-				disassembledOpcode << "]" << (writeBack ? "!" : "");
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armBlockDataTransferMask) == armBlockDataTransferBits) {
-			bool prePostIndex = lutIndex & 0b0001'0000'0000;
-			bool upDown = lutIndex & 0b0000'1000'0000;
-			bool sBit = lutIndex & 0b0000'0100'0000;
-			bool writeBack = lutIndex & 0b0000'0010'0000;
-			bool loadStore = lutIndex & 0b0000'0001'0000;
-			auto baseRegister = (opcode >> 16) & 0xF;
-
-			if (disassemblerOptions.simplifyPushPop && (baseRegister == 13) && ((loadStore && !prePostIndex && upDown) || (!loadStore && prePostIndex && !upDown)) && writeBack && !sBit) {
-				disassembledOpcode << (loadStore ? "POP" : "PUSH") << condtionCode << " {";
-			} else {
-				disassembledOpcode << (loadStore ? "LDM" : "STM") << condtionCode;
-
-				// Code based on Table 4-6: Addressing mode names
-				if (disassemblerOptions.ldmStmStackSuffixes) {
-					switch ((loadStore << 2) | (prePostIndex << 1) | upDown) {
-					case 7: disassembledOpcode << "ED"; break;
-					case 5: disassembledOpcode << "FD"; break;
-					case 6: disassembledOpcode << "EA"; break;
-					case 4: disassembledOpcode << "FA"; break;
-					case 3: disassembledOpcode << "FA"; break;
-					case 1: disassembledOpcode << "EA"; break;
-					case 2: disassembledOpcode << "FD"; break;
-					case 0: disassembledOpcode << "ED"; break;
-					}
-				} else {
-					switch ((loadStore << 2) | (prePostIndex << 1) | upDown) {
-					case 7: disassembledOpcode << "IB"; break;
-					case 5: disassembledOpcode << "IA"; break;
-					case 6: disassembledOpcode << "DB"; break;
-					case 4: disassembledOpcode << "DA"; break;
-					case 3: disassembledOpcode << "IB"; break;
-					case 1: disassembledOpcode << "IA"; break;
-					case 2: disassembledOpcode << "DB"; break;
-					case 0: disassembledOpcode << "DA"; break;
-					}
-				}
-
-				disassembledOpcode << " " << getRegName(baseRegister) << (writeBack ? "!" : "") << ", {";
-			}
-
-			// Print register list
-			bool registerList[18] = {false};
-			for (int i = 0; i < 16; i++)
-				registerList[i] = (opcode & (1 << i));
-
-			bool hasPrintedRegister = false;
-			for (int i = 0; i < 16; i++) {
-				if (registerList[i]) {
-					disassembledOpcode << (hasPrintedRegister ? "," : "") << getRegName(i);
-					hasPrintedRegister = true;
-
-					if (registerList[i + 1] && registerList[i + 2]) { // Shorten group of registers
-						disassembledOpcode << "-";
-						do {
-							++i;
-						} while (registerList[i + 1]);
-						disassembledOpcode << getRegName(i);
-					}
-				}
-			}
-			disassembledOpcode << "}";
-
-			if (sBit)
-				disassembledOpcode << "^";
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armBranchMask) == armBranchBits) {
-			if (lutIndex & 0b0001'0000'0000) {
-				disassembledOpcode << "BL";
-			} else {
-				disassembledOpcode << "B";
-			}
-			disassembledOpcode << condtionCode;
-
-			u32 jumpLocation = address + (((i32)((opcode & 0x00FFFFFF) << 8)) >> 6) + 8;
-			if (disassemblerOptions.printAddressesHex) {
-				disassembledOpcode << " #0x" << std::hex << jumpLocation;
-			} else {
-				disassembledOpcode << " #" << jumpLocation;
-			}
-
-			return disassembledOpcode.str();
-		} else if ((lutIndex & armSoftwareInterruptMask) == armSoftwareInterruptBits) {
-			if (disassemblerOptions.printAddressesHex) {
-				disassembledOpcode << "SWI" << condtionCode << " #0x" << std::hex << (opcode & 0x00FFFFFF);
-			} else {
-				disassembledOpcode << "SWI" << condtionCode << " #" << (opcode & 0x00FFFFFF);
-			}
-
-			return disassembledOpcode.str();
-		}
-
-		return "Undefined ARM";
-	}
-}
-
-std::string ARM7TDMI::getRegName(unsigned int regNumber) {
-	if (disassemblerOptions.simplifyRegisterNames) {
-		switch (regNumber) {
-		case 13:
-			return "sp";
-		case 14:
-			return "lr";
-		case 15:
-			return "pc";
-		}
-	}
-	return (std::string)"r" + std::to_string(regNumber);
-}
-
-std::string ARM7TDMI::disassembleShift(u32 opcode, bool showUpDown) {
-	std::stringstream returnValue;
-
-	if (showUpDown && !((opcode >> 25) & 1)) {
-		returnValue << ((showUpDown & !((opcode >> 23) & 1)) ? "#-" : "#");
-		if (disassemblerOptions.printOperandsHex) {
-			returnValue << "0x" << std::hex;
-		}
-		returnValue << (opcode & 0xFFF);
-		
-		return returnValue.str();
-	} else if (((opcode >> 25) & 1) && !showUpDown) {
-		u32 shiftAmount = (opcode & (0xF << 8)) >> 7;
-		u32 shiftInput = opcode & 0xFF;
-		shiftInput = shiftAmount ? ((shiftInput >> shiftAmount) | (shiftInput << (32 - shiftAmount))) : shiftInput;
-		
-		if (disassemblerOptions.printOperandsHex) {
-			returnValue << "#0x" << std::hex << shiftInput;
-		} else {
-			returnValue << "#" << shiftInput;
-		}
-	} else {
-		if (showUpDown) {
-			returnValue << (((opcode >> 23) & 1) ? "r" : "-r") << (opcode & 0xF);
-		} else {
-			returnValue << getRegName(opcode & 0xF);
-		}
-
-		if ((opcode & 0xFF0) == 0) // LSL #0
-			return returnValue.str();
-
-		switch ((opcode >> 5) & 3) {
-		case 0:
-			returnValue << ", LSL ";
-			break;
-		case 1:
-			returnValue << ", LSR ";
-			break;
-		case 2:
-			returnValue << ", ASR ";
-			break;
-		case 3:
-			if (!(opcode & (1 << 4)) && (((opcode & (0x1F << 7)) >> 7) == 0)) {
-				returnValue << ", RRX";
-				return returnValue.str();
-			} else {
-				returnValue << ", ROR ";
-			}
-			break;
-		}
-
-		if (opcode & (1 << 4)) {
-			returnValue << "r" << ((opcode & (0xF << 8)) >> 8);
-		} else {
-			auto shiftAmount = ((opcode & (0x1F << 7)) >> 7);
-			if ((shiftAmount == 0) && ((opcode & (3 << 5)) != 0))
-				shiftAmount = 32;
-
-			returnValue << "#" << shiftAmount;
-		}
-	}
-
-	return returnValue.str();
-}
-
 void ARM7TDMI::unknownOpcodeArm(u32 opcode) {
 	unknownOpcodeArm(opcode, "No LUT entry");
 }
@@ -913,7 +237,6 @@ bool ARM7TDMI::computeShift(u32 opcode, u32 *result) {
 	u32 shiftOperand;
 	u32 shiftAmount;
 	bool shifterCarry = false;
-	tmpIncrement = false;
 
 	if constexpr (dataTransfer && !iBit) {
 		shiftOperand = opcode & 0xFFF;
@@ -929,14 +252,11 @@ bool ARM7TDMI::computeShift(u32 opcode, u32 *result) {
 	} else {
 		if (opcode & (1 << 4)) {
 			shiftAmount = reg.R[(opcode >> 8) & 0xF] & 0xFF;
-
-			reg.R[15] += 4;
-			tmpIncrement = true;
 		} else {
 			shiftAmount = (opcode >> 7) & 0x1F;
 		}
 		shiftOperand = reg.R[opcode & 0xF];
-		
+
 		if ((opcode & (1 << 4)) && (shiftAmount == 0)) {
 			shifterCarry = reg.flagC;
 		} else {
@@ -1107,7 +427,7 @@ void ARM7TDMI::bankRegisters(cpuMode newMode, bool enterMode) {
 	}
 
 	if (enterMode) {
-		reg.R[14] = reg.R[15] - (reg.thumbMode ? 2 : 4);
+		//reg.R[14] = reg.R[15] - (reg.thumbMode ? 2 : 4);
 		reg.CPSR = (reg.CPSR & ~0x3F) | newMode;
 	}
 }
@@ -1130,6 +450,11 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 	// Shift and rotate to get operands
 	u32 operand1;
 	u32 operand2;
+
+	bool shiftReg = !iBit && ((opcode >> 4) & 1);
+	if (shiftReg) {
+		fetchOpcode();
+	}
 	bool shifterCarry = computeShift<false, iBit>(opcode, &operand2);
 
 	// Perform operation
@@ -1207,7 +532,7 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 
 	// Compute common flags
 	if constexpr (sBit) {
-		reg.flagN = result >> 31; 
+		reg.flagN = result >> 31;
 		reg.flagZ = result == 0;
 		if ((operation < 2) || (operation == 8) || (operation == 9) || (operation >= 0xC)) { // Logical operations
 			reg.flagC = shifterCarry;
@@ -1217,19 +542,20 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 		}
 	}
 
-	if (tmpIncrement)
-		reg.R[15] -= 4;
+	if (shiftReg) {
+		iCycle(1); // TODO: Should probably be after setting register
+	} else {
+		fetchOpcode();
+	}
 
 	if constexpr ((operation < 8) || (operation >= 0xC)) {
 		reg.R[destinationReg] = result;
-		
+
 		if (destinationReg == 15) {
 			if (sBit)
 				leaveMode();
 
-			reg.R[15] &= reg.thumbMode ? ~1 : ~3;
-			pipelineStage = 1;
-			incrementR15 = false;
+			flushPipeline();
 		}
 	} else if constexpr (sBit) {
 		if (destinationReg == 15)
@@ -1239,58 +565,68 @@ void ARM7TDMI::dataProcessing(u32 opcode) {
 
 template <bool accumulate, bool sBit>
 void ARM7TDMI::multiply(u32 opcode) {
-	u32 destinationReg = (opcode >> 16) & 0xF;	
+	u32 destinationReg = (opcode >> 16) & 0xF;
+	u32 multiplier = reg.R[(opcode >> 8) & 0xF];
+	fetchOpcode();
 
-	u32 result = reg.R[(opcode >> 8) & 0xF] * reg.R[opcode & 0xF];
-	if constexpr (accumulate)
+	u32 result = multiplier * reg.R[opcode & 0xF];
+	if constexpr (accumulate) {
 		result += reg.R[(opcode >> 12) & 0xF];
-	
+		iCycle(1);
+	}
+	reg.R[destinationReg] = result;
 	if constexpr (sBit) {
-		reg.flagN = result >> 31; 
+		reg.flagN = result >> 31;
 		reg.flagZ = result == 0;
 	}
 
-	reg.R[destinationReg] = result;
+	int multiplierCycles = ((31 - std::max(std::countl_zero(multiplier), std::countl_one(multiplier))) / 8) + 1;
+	iCycle(multiplierCycles);
 
 	if (destinationReg == 15) {
 		if constexpr (sBit)
 			leaveMode();
 
-		reg.R[15] &= reg.thumbMode ? ~1 : ~3;
-		pipelineStage = 1;
-		incrementR15 = false;
+		flushPipeline();
 	}
 }
 
 template <bool signedMul, bool accumulate, bool sBit>
 void ARM7TDMI::multiplyLong(u32 opcode) {
-	u32 destinationRegLow = (opcode >> 12) & 0xF;	
+	u32 destinationRegLow = (opcode >> 12) & 0xF;
 	u32 destinationRegHigh = (opcode >> 16) & 0xF;
+	u32 multiplier = reg.R[(opcode >> 8) & 0xF];
+	fetchOpcode();
 
 	u64 result;
+	int multiplierCycles;
 	if constexpr (signedMul) {
-		result = (i64)((i32)reg.R[(opcode >> 8) & 0xF]) * (i64)((i32)reg.R[opcode & 0xF]);
+		result = (i64)((i32)multiplier) * (i64)((i32)reg.R[opcode & 0xF]);
+		multiplierCycles = ((31 - std::max(std::countl_zero(multiplier), std::countl_one(multiplier))) / 8) + 1;
 	} else {
-		result = (u64)reg.R[(opcode >> 8) & 0xF] * (u64)reg.R[opcode & 0xF];
+		result = (u64)multiplier * (u64)reg.R[opcode & 0xF];
+		multiplierCycles = ((31 - std::countl_zero(multiplier)) / 8) + 1;
 	}
-	if constexpr (accumulate)
+	if constexpr (accumulate) {
 		result += ((u64)reg.R[destinationRegHigh] << 32) | (u64)reg.R[destinationRegLow];
-	
+		iCycle(1);
+	}
 	if constexpr (sBit) {
-		reg.flagN = result >> 63; 
+		reg.flagN = result >> 63;
 		reg.flagZ = result == 0;
 	}
+
+	iCycle(multiplierCycles + 1);
 
 	reg.R[destinationRegLow] = result;
 	reg.R[destinationRegHigh] = result >> 32;
 
+	nextFetchType = true;
 	if ((destinationRegLow == 15) || (destinationRegHigh == 15)) {
 		if constexpr (sBit)
 			leaveMode();
 
-		reg.R[15] &= reg.thumbMode ? ~1 : ~3;
-		pipelineStage = 1;
-		incrementR15 = false;
+		flushPipeline();
 	}
 }
 
@@ -1299,23 +635,22 @@ void ARM7TDMI::singleDataSwap(u32 opcode) {
 	u32 address = reg.R[(opcode >> 16) & 0xF];
 	u32 sourceRegister = opcode & 0xF;
 	u32 destinationRegister = (opcode >> 12) & 0xF;
+	u32 result;
+	fetchOpcode();
 
 	if constexpr (byteWord) {
-		u32 result = bus.read<u8>(address);
-		bus.write<u8>(address, (u8)reg.R[sourceRegister]);
-
-		reg.R[destinationRegister] = result;
+		result = bus.read<u8>(address, true);
+		bus.write<u8>(address, (u8)reg.R[sourceRegister], false);
 	} else {
-		u32 result = bus.read<u32>(address);
-		bus.write<u32>(address, reg.R[sourceRegister]);
-
-		reg.R[destinationRegister] = result;
+		result = bus.read<u32>(address, true);
+		bus.write<u32>(address, reg.R[sourceRegister], false);
 	}
 
+	reg.R[destinationRegister] = result;
+	iCycle(1);
+
 	if (destinationRegister == 15) {
-		reg.R[15] &= ~3;
-		pipelineStage = 1;
-		incrementR15 = false;
+		flushPipeline();
 	}
 }
 
@@ -1334,6 +669,8 @@ template <bool targetPSR> void ARM7TDMI::psrLoad(u32 opcode) {
 	} else {
 		reg.R[destinationReg] = reg.CPSR;
 	}
+
+	fetchOpcode();
 }
 
 template <bool targetPSR> void ARM7TDMI::psrStoreReg(u32 opcode) {
@@ -1347,7 +684,7 @@ template <bool targetPSR> void ARM7TDMI::psrStoreReg(u32 opcode) {
 		case MODE_SUPERVISOR: target = &reg.SPSR_svc; break;
 		case MODE_ABORT: target = &reg.SPSR_abt; break;
 		case MODE_UNDEFINED: target = &reg.SPSR_und; break;
-		default: return;
+		default: fetchOpcode(); return;
 		}
 	} else {
 		target = &reg.CPSR;
@@ -1368,6 +705,7 @@ template <bool targetPSR> void ARM7TDMI::psrStoreReg(u32 opcode) {
 	}
 
 	*target = result;
+	fetchOpcode();
 }
 
 template <bool targetPSR> void ARM7TDMI::psrStoreImmediate(u32 opcode) {
@@ -1383,7 +721,7 @@ template <bool targetPSR> void ARM7TDMI::psrStoreImmediate(u32 opcode) {
 		case MODE_SUPERVISOR: target = &reg.SPSR_svc; break;
 		case MODE_ABORT: target = &reg.SPSR_abt; break;
 		case MODE_UNDEFINED: target = &reg.SPSR_und; break;
-		default: return;
+		default: fetchOpcode(); return;
 		}
 	} else {
 		target = &reg.CPSR;
@@ -1404,27 +742,25 @@ template <bool targetPSR> void ARM7TDMI::psrStoreImmediate(u32 opcode) {
 	}
 
 	*target = result;
+	fetchOpcode();
 }
 
 void ARM7TDMI::branchExchange(u32 opcode) {
-	if (reg.R[opcode & 0xF] & 1) {
-		reg.thumbMode = true;
-		reg.R[15] = reg.R[opcode & 0xF] & ~1;
-	} else {
-		reg.thumbMode = false;
-		reg.R[15] = reg.R[opcode & 0xF] & ~3;
-	}
+	bool newThumb = reg.R[opcode & 0xF] & 1;
+	u32 newAddress = reg.R[opcode & 0xF] & (newThumb ? ~1 : ~3);
+	fetchOpcode();
 
-	pipelineStage = 1;
-	incrementR15 = false;
+	reg.thumbMode = newThumb;
+	reg.R[15] = newAddress;
+	flushPipeline();
 }
 
 template <bool prePostIndex, bool upDown, bool immediateOffset, bool writeBack, bool loadStore, int shBits>
 void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 	auto baseRegister = (opcode >> 16) & 0xF;
 	auto srcDestRegister = (opcode >> 12) & 0xF;
-	if ((baseRegister == 15) || (srcDestRegister == 15))
-		unknownOpcodeArm(opcode, "r15 Operand");
+	if ((baseRegister == 15) && writeBack)
+		unknownOpcodeArm(opcode, "r15 Operand With Writeback");
 
 	u32 offset;
 	if constexpr (immediateOffset) {
@@ -1441,15 +777,16 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 			address -= offset;
 		}
 	}
+	fetchOpcode();
 
 	u32 result = 0;
 	if constexpr (loadStore) {
 		if constexpr (shBits == 1) { // LDRH
-			result = bus.read<u16>(address);
+			result = bus.read<u16>(address, false);
 		} else if constexpr (shBits == 2) { // LDRSB
-			result = ((i32)((u32)bus.read<u8>(address) << 24) >> 24);
+			result = ((i32)((u32)bus.read<u8>(address, false) << 24) >> 24);
 		} else if constexpr (shBits == 3) { // LDRSH
-			result = bus.read<u16>(address);
+			result = bus.read<u16>(address, false);
 
 			if (address & 1) {
 				result = (i32)(result << 24) >> 24;
@@ -1459,10 +796,13 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 		}
 	} else {
 		if constexpr (shBits == 1) { // STRH
-			bus.write<u16>(address, (u16)reg.R[srcDestRegister]);
+			bus.write<u16>(address, (u16)reg.R[srcDestRegister], false);
 		}
+
+		nextFetchType = false;
 	}
 
+	// TODO: Base register modification should be at same time as read/write
 	if constexpr (writeBack && prePostIndex)
 		reg.R[baseRegister] = address;
 	if constexpr (!prePostIndex) {
@@ -1475,10 +815,10 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 	}
 	if constexpr (loadStore) {
 		reg.R[srcDestRegister] = result;
+		iCycle(1);
+
 		if (srcDestRegister == 15) {
-			reg.R[15] &= ~3;
-			pipelineStage = 1;
-			incrementR15 = false;
+			flushPipeline();
 		}
 	}
 }
@@ -1487,15 +827,13 @@ template <bool immediateOffset, bool prePostIndex, bool upDown, bool byteWord, b
 void ARM7TDMI::singleDataTransfer(u32 opcode) {
 	auto baseRegister = (opcode >> 16) & 0xF;
 	auto srcDestRegister = (opcode >> 12) & 0xF;
-	if (((baseRegister == 15) && writeBack))
+	if ((baseRegister == 15) && writeBack)
 		unknownOpcodeArm(opcode, "r15 Operand With Writeback");
 
 	u32 offset;
 	computeShift<true, immediateOffset>(opcode, &offset);
 
 	u32 address = reg.R[baseRegister];
-	if (tmpIncrement)
-		reg.R[15] -= 4;
 	if constexpr (prePostIndex) {
 		if constexpr (upDown) {
 			address += offset;
@@ -1503,22 +841,26 @@ void ARM7TDMI::singleDataTransfer(u32 opcode) {
 			address -= offset;
 		}
 	}
+	fetchOpcode();
 
 	u32 result = 0;
 	if constexpr (loadStore) { // LDR
 		if constexpr (byteWord) {
-			result = bus.read<u8>(address);
+			result = bus.read<u8>(address, false);
 		} else {
-			result = bus.read<u32>(address);
+			result = bus.read<u32>(address, false);
 		}
 	} else { // STR
 		if constexpr (byteWord) {
-			bus.write<u8>(address, reg.R[srcDestRegister] + (srcDestRegister == 15 ? 4 : 0));
+			bus.write<u8>(address, reg.R[srcDestRegister], false);
 		} else {
-			bus.write<u32>(address, reg.R[srcDestRegister] + (srcDestRegister == 15 ? 4 : 0));
+			bus.write<u32>(address, reg.R[srcDestRegister], false);
 		}
+
+		nextFetchType = false;
 	}
 
+	// TODO: Base register modification should be at same time as read/write
 	if constexpr (writeBack && prePostIndex)
 		reg.R[baseRegister] = address;
 	if constexpr (!prePostIndex) {
@@ -1531,27 +873,28 @@ void ARM7TDMI::singleDataTransfer(u32 opcode) {
 	}
 	if constexpr (loadStore) {
 		reg.R[srcDestRegister] = result;
+		iCycle(1);
+
 		if (srcDestRegister == 15) {
-			reg.R[15] &= ~3;
-			pipelineStage = 1;
-			incrementR15 = false;
+			flushPipeline();
 		}
 	}
 }
 
 void ARM7TDMI::undefined(u32 opcode) {
 	bankRegisters(MODE_UNDEFINED, true);
+	reg.R[14] = reg.R[15] - 4;
+	fetchOpcode();
 
 	reg.R[15] = 0x4;
-	pipelineStage = 1;
-	incrementR15 = false;
+	flushPipeline();
 }
 
 template <bool prePostIndex, bool upDown, bool sBit, bool writeBack, bool loadStore>
 void ARM7TDMI::blockDataTransfer(u32 opcode) {
 	u32 baseRegister = (opcode >> 16) & 0xF;
-	//if (baseRegister == 15)
-	//	unknownOpcodeArm(opcode, "LDM/STM r15 as base");
+	if ((baseRegister == 15) && writeBack)
+		unknownOpcodeArm(opcode, "r15 Operand With Writeback");
 
 	u32 address = reg.R[baseRegister];
 	u32 writeBackAddress;
@@ -1578,39 +921,47 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 		bankRegisters(MODE_USER, false);
 		reg.mode = MODE_USER;
 	}
+	fetchOpcode();
 
+	bool firstReadWrite = true; // TODO: Interleave fetches with register writes
 	if constexpr (loadStore) { // LDM
 		if constexpr (writeBack)
 			reg.R[baseRegister] = writeBackAddress;
 
-		if (emptyRegList) {
-			reg.R[15] = bus.read<u32>(address); // TODO rotate
-			pipelineStage = 1;
-			incrementR15 = false;
+		if (emptyRegList) { // TODO: find timings for empty list
+			reg.R[baseRegister] = writeBackAddress;
+			reg.R[15] = bus.read<u32>(address, false);
+			flushPipeline();
 		} else {
 			for (int i = 0; i < 16; i++) {
 				if (opcode & (1 << i)) {
-					u32 val = bus.read<u32>(address);
+					if (firstReadWrite) {
+						if constexpr (writeBack)
+							reg.R[baseRegister] = writeBackAddress;
+					}
+
+					u32 val = bus.read<u32>(address, !firstReadWrite);
 					reg.R[i] = (val >> ((4 - (address & 3)) * 8)) | (val << ((address & 3) * 8)); // Undo rotate
 					address += 4;
+
+					if (firstReadWrite)
+						firstReadWrite = false;
 				}
 			}
+			iCycle(1);
 
 			if (opcode & (1 << 15)) { // Treat r15 loads as jumps
-				pipelineStage = 1;
-				incrementR15 = false;
+				flushPipeline();
 			}
 		}
 	} else { // STM
 		if (emptyRegList) {
-			bus.write<u32>(address, reg.R[15] + 4);
+			bus.write<u32>(address, reg.R[15], false);
 			reg.R[baseRegister] = writeBackAddress;
 		} else {
-			bool firstReadWrite = true;
-
 			for (int i = 0; i < 16; i++) {
 				if (opcode & (1 << i)) {
-					bus.write<u32>(address, reg.R[i] + ((((i == 15) && !firstReadWrite)) ? 4 : 0));
+					bus.write<u32>(address, reg.R[i], !firstReadWrite);
 					address += 4;
 
 					if (firstReadWrite) {
@@ -1621,6 +972,8 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 				}
 			}
 		}
+
+		nextFetchType = false;
 	}
 
 	if constexpr (sBit) {
@@ -1629,36 +982,28 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 
 		if (((opcode & (1 << 15)) || emptyRegList) && loadStore) {
 			leaveMode();
-
-			reg.R[15] &= reg.thumbMode ? ~1 : ~3;
-		}
-	}
-
-	if constexpr (loadStore && writeBack) {
-		if (baseRegister == 15) {
-			pipelineStage = 1;
-			incrementR15 = false;
-			reg.R[15] &= reg.thumbMode ? ~1 : ~3;
 		}
 	}
 }
 
 template <bool lBit>
 void ARM7TDMI::branch(u32 opcode) {
-	if constexpr (lBit)
-		reg.R[14] = reg.R[15] - 4;
-	reg.R[15] += ((i32)((opcode & 0x00FFFFFF) << 8)) >> 6;
+	u32 address = reg.R[15] + (((i32)((opcode & 0x00FFFFFF) << 8)) >> 6);
+	fetchOpcode();
 
-	pipelineStage = 1;
-	incrementR15 = false;
+	if constexpr (lBit)
+		reg.R[14] = reg.R[15] - 8;
+	reg.R[15] = address;
+	flushPipeline();
 }
 
-void ARM7TDMI::softwareInterrupt(u32 opcode) {
+void ARM7TDMI::softwareInterrupt(u32 opcode) { // TODO: Proper timings for exceptions
+	fetchOpcode();
 	bankRegisters(MODE_SUPERVISOR, true);
+	reg.R[14] = reg.R[15] - 8;
 
 	reg.R[15] = 0x8;
-	pipelineStage = 1;
-	incrementR15 = false;
+	flushPipeline();
 }
 
 using lutEntry = void (ARM7TDMI::*)(u32);
@@ -1752,6 +1097,7 @@ void ARM7TDMI::thumbMoveShiftedReg(u16 opcode) {
 	reg.flagN = shiftOperand >> 31;
 	reg.flagZ = shiftOperand == 0;
 	reg.R[opcode & 7] = shiftOperand;
+	fetchOpcode();
 }
 
 template <bool immediate, bool op, int offset>
@@ -1764,17 +1110,18 @@ void ARM7TDMI::thumbAddSubtract(u16 opcode) {
 		reg.flagC = operand1 >= operand2;
 		result = operand1 - operand2;
 		reg.flagV = ((operand1 ^ operand2) & ((operand1 ^ result)) & 0x80000000) > 0;
-		reg.flagN = result >> 31; 
+		reg.flagN = result >> 31;
 		reg.flagZ = result == 0;
 	} else { // ADD
 		reg.flagC = ((u64)operand1 + (u64)operand2) >> 32;
 		result = operand1 + operand2;
 		reg.flagV = (~(operand1 ^ operand2) & ((operand1 ^ result)) & 0x80000000) > 0;
-		reg.flagN = result >> 31; 
+		reg.flagN = result >> 31;
 		reg.flagZ = result == 0;
 	}
 
 	reg.R[opcode & 7] = result;
+	fetchOpcode();
 }
 
 template <int op, int destinationReg>
@@ -1806,8 +1153,9 @@ void ARM7TDMI::thumbAluImmediate(u16 opcode) {
 
 	reg.flagN = result >> 31;
 	reg.flagZ = result == 0;
-	if (op != 1)
+	if constexpr (op != 1)
 		reg.R[destinationReg] = result;
+	fetchOpcode();
 }
 
 template <int op>
@@ -1815,6 +1163,9 @@ void ARM7TDMI::thumbAluReg(u16 opcode) {
 	u32 destinationReg = opcode & 7;
 	u32 operand1 = reg.R[destinationReg];
 	u32 operand2 = reg.R[(opcode >> 3) & 7];
+
+	constexpr bool writeResult = ((op != 0x8) && (op != 0xA) && (op != 0xB));
+	constexpr bool endWithIdle = ((op == 0x2) || (op == 0x3) || (op == 0x4) || (op == 0x7) || (op == 0xD));
 
 	u32 result;
 	switch (op) {
@@ -1831,11 +1182,12 @@ void ARM7TDMI::thumbAluReg(u16 opcode) {
 			if (operand2 > 31) {
 				reg.flagC = (operand2 == 32) ? (operand1 & 1) : 0;
 				result = 0;
-				break;
+			} else {
+				reg.flagC = (operand1 & (1 << (31 - (operand2 - 1)))) > 0;
+				result = operand1 << operand2;
 			}
-			reg.flagC = (operand1 & (1 << (31 - (operand2 - 1)))) > 0;
-			result = operand1 << operand2;
 		}
+		fetchOpcode();
 		break;
 	case 0x3: // LSR
 		if (operand2 == 0) {
@@ -1850,6 +1202,7 @@ void ARM7TDMI::thumbAluReg(u16 opcode) {
 			reg.flagC = (operand1 >> (operand2 - 1)) & 1;
 			result = operand1 >> operand2;
 		}
+		fetchOpcode();
 		break;
 	case 0x4: // ASR
 		if (operand2 == 0) {
@@ -1866,6 +1219,7 @@ void ARM7TDMI::thumbAluReg(u16 opcode) {
 			reg.flagC = (operand1 >> (operand2 - 1)) & 1;
 			result = ((i32)operand1) >> operand2;
 		}
+		fetchOpcode();
 		break;
 	case 0x5: // ADC
 		result = operand1 + operand2 + reg.flagC;
@@ -1885,11 +1239,12 @@ void ARM7TDMI::thumbAluReg(u16 opcode) {
 			if (operand2 == 0) {
 				reg.flagC = operand1 >> 31;
 				result = operand1;
-				break;
+			} else {
+				reg.flagC = (bool)(operand1 & (1 << (operand2 - 1)));
+				result = (operand1 >> operand2) | (operand1 << (32 - operand2));
 			}
-			reg.flagC = (bool)(operand1 & (1 << (operand2 - 1)));
-			result = (operand1 >> operand2) | (operand1 << (32 - operand2));
 		}
+		fetchOpcode();
 		break;
 	case 0x8: // TST
 		result = operand1 & operand2;
@@ -1913,6 +1268,9 @@ void ARM7TDMI::thumbAluReg(u16 opcode) {
 		result = operand1 | operand2;
 		break;
 	case 0xD: // MUL
+		fetchOpcode();
+		iCycle((31 - std::max(std::countl_zero(operand1), std::countl_one(operand1))) / 8);
+
 		result = operand1 * operand2;
 		break;
 	case 0xE: // BIC
@@ -1924,11 +1282,16 @@ void ARM7TDMI::thumbAluReg(u16 opcode) {
 	}
 
 	// Compute common flags
-	reg.flagN = result >> 31; 
+	reg.flagN = result >> 31;
 	reg.flagZ = result == 0;
 
-	if ((op != 0x8) && (op != 0xA) && (op != 0xB))
+	if constexpr (writeResult)
 		reg.R[destinationReg] = result;
+	if constexpr (endWithIdle) {
+		iCycle(1);
+	} else {
+		fetchOpcode();
+	}
 }
 
 template <int op, bool opFlag1, bool opFlag2>
@@ -1939,58 +1302,72 @@ void ARM7TDMI::thumbHighRegOperation(u16 opcode) {
 	u32 result;
 	switch (op) {
 	case 0: // ADD
-		reg.R[operand1] += reg.R[operand2];
+		result = reg.R[operand1] + reg.R[operand2];
 		break;
 	case 1: // CMP
 		reg.flagC = reg.R[operand1] >= reg.R[operand2];
 		result = reg.R[operand1] - reg.R[operand2];
 		reg.flagV = ((reg.R[operand1] ^ reg.R[operand2]) & ((reg.R[operand1] ^ result)) & 0x80000000) > 0;
-		reg.flagN = result >> 31; 
+		reg.flagN = result >> 31;
 		reg.flagZ = result == 0;
 		break;
 	case 2: // MOV
-		reg.R[operand1] = reg.R[operand2];
+		result = reg.R[operand2];
 		break;
-	case 3: // BX
-		reg.thumbMode = reg.R[operand2] & 1;
+	case 3:{ // BX
+		bool newThumb = reg.R[operand2] & 1;
+		u32 newAddress = reg.R[operand2];
+		fetchOpcode();
 
-		reg.R[15] = reg.R[operand2] & (reg.thumbMode ? ~1 : ~3);
-		pipelineStage = 1;
-		incrementR15 = false;
-		break;
+		reg.thumbMode = newThumb;
+		reg.R[15] = newAddress;
+		flushPipeline();
+		}return;
 	}
+	fetchOpcode();
+	if constexpr (op != 1)
+		reg.R[operand1] = result;
 
 	if (operand1 == 15) {
-		reg.R[15] &= ~1;
-		pipelineStage = 1;
-		incrementR15 = false;
+		flushPipeline();
 	}
 }
 
 template <int destinationReg>
 void ARM7TDMI::thumbPcRelativeLoad(u16 opcode) {
-	reg.R[destinationReg] = bus.read<u32>((reg.R[15] + ((opcode & 0xFF) << 2)) & ~3);
+	u32 address = (reg.R[15] + ((opcode & 0xFF) << 2)) & ~3;
+	fetchOpcode();
+
+	reg.R[destinationReg] = bus.read<u32>(address, false);
+	iCycle(1);
 }
 
 template <bool loadStore, bool byteWord, int offsetReg>
 void ARM7TDMI::thumbLoadStoreRegOffset(u16 opcode) {
 	auto srcDestRegister = opcode & 0x7;
 	u32 address = reg.R[(opcode >> 3) & 7] + reg.R[offsetReg];
+	fetchOpcode();
 
+	u32 result;
 	if constexpr (loadStore) {
 		if constexpr (byteWord) { // LDRB
-			reg.R[srcDestRegister] = bus.read<u8>(address);
+			result = bus.read<u8>(address, false);
 		} else { // LDR
-			u32 result = bus.read<u32>(address);
-
-			reg.R[srcDestRegister] = result;
+			result = bus.read<u32>(address, false);
 		}
 	} else {
-		if constexpr (byteWord) {
-			bus.write<u8>(address, (u8)reg.R[srcDestRegister]);
-		} else {
-			bus.write<u32>(address, reg.R[srcDestRegister]);
+		if constexpr (byteWord) { // STRB
+			bus.write<u8>(address, (u8)reg.R[srcDestRegister], false);
+		} else { // STR
+			bus.write<u32>(address, reg.R[srcDestRegister], false);
 		}
+
+		nextFetchType = false;
+	}
+
+	if constexpr (loadStore) {
+		reg.R[srcDestRegister] = result;
+		iCycle(1);
 	}
 }
 
@@ -1998,21 +1375,23 @@ template <int hsBits, int offsetReg>
 void ARM7TDMI::thumbLoadStoreSext(u16 opcode) {
 	auto srcDestRegister = opcode & 0x7;
 	u32 address = reg.R[(opcode >> 3) & 7] + reg.R[offsetReg];
+	fetchOpcode();
 
 	u32 result = 0;
 	switch (hsBits) {
 	case 0: // STRH
-		bus.write<u16>(address, (u16)reg.R[srcDestRegister]);
+		bus.write<u16>(address, (u16)reg.R[srcDestRegister], false);
+		nextFetchType = false;
 		break;
 	case 1: // LDSB
-		result = bus.read<u8>(address);
+		result = bus.read<u8>(address, false);
 		result = (i32)(result << 24) >> 24;
 		break;
 	case 2: // LDRH
-		result = bus.read<u16>(address);
+		result = bus.read<u16>(address, false);
 		break;
 	case 3: // LDSH
-		result = bus.read<u16>(address);
+		result = bus.read<u16>(address, false);
 
 		if (address & 1) {
 			result = (i32)(result << 24) >> 24;
@@ -2022,29 +1401,33 @@ void ARM7TDMI::thumbLoadStoreSext(u16 opcode) {
 		break;
 	}
 
-	if constexpr (hsBits != 0)
+	if constexpr (hsBits != 0) {
 		reg.R[srcDestRegister] = result;
+		iCycle(1);
+	}
 }
 
 template <bool byteWord, bool loadStore, int offset>
 void ARM7TDMI::thumbLoadStoreImmediateOffset(u16 opcode) {
 	auto srcDestRegister = opcode & 0x7;
 	u32 address = reg.R[(opcode >> 3) & 7] + (byteWord ? offset : (offset << 2));
+	fetchOpcode();
 
 	if constexpr (loadStore) {
 		if constexpr (byteWord) { // LDRB
-			reg.R[srcDestRegister] = bus.read<u8>(address);
+			reg.R[srcDestRegister] = bus.read<u8>(address, false);
 		} else { // LDR
-			u32 result = bus.read<u32>(address);
-
-			reg.R[srcDestRegister] = result;
+			reg.R[srcDestRegister] = bus.read<u32>(address, false);
 		}
+		iCycle(1);
 	} else {
-		if constexpr (byteWord) {
-			bus.write<u8>(address, (u8)reg.R[srcDestRegister]);
-		} else {
-			bus.write<u32>(address, reg.R[srcDestRegister]);
+		if constexpr (byteWord) { // STRB
+			bus.write<u8>(address, (u8)reg.R[srcDestRegister], false);
+		} else { // STR
+			bus.write<u32>(address, reg.R[srcDestRegister], false);
 		}
+
+		nextFetchType = false;
 	}
 }
 
@@ -2052,24 +1435,31 @@ template <bool loadStore, int offset>
 void ARM7TDMI::thumbLoadStoreHalfword(u16 opcode) {
 	auto srcDestRegister = opcode & 0x7;
 	u32 address = reg.R[(opcode >> 3) & 7] + (offset << 1);
+	fetchOpcode();
 
 	if constexpr (loadStore) { // LDRH
-		u32 result = bus.read<u16>(address);
-
-		reg.R[srcDestRegister] = result;
+		reg.R[srcDestRegister] = bus.read<u16>(address, false);
+		iCycle(1);
 	} else { // STRH
-		bus.write<u16>(address, (u16)reg.R[srcDestRegister]);
+		bus.write<u16>(address, (u16)reg.R[srcDestRegister], false);
+
+		nextFetchType = false;
 	}
 }
 
 template <bool loadStore, int destinationReg>
 void ARM7TDMI::thumbSpRelativeLoadStore(u16 opcode) {
 	u32 address = reg.R[13] + ((opcode & 0xFF) << 2);
+	fetchOpcode();
 
 	if constexpr (loadStore) {
-		reg.R[destinationReg] = bus.read<u32>(address);
+		reg.R[destinationReg] = bus.read<u32>(address, false);
+
+		iCycle(1);
 	} else {
-		bus.write<u32>(address, reg.R[destinationReg]);
+		bus.write<u32>(address, reg.R[destinationReg], false);
+
+		nextFetchType = false;
 	}
 }
 
@@ -2080,6 +1470,7 @@ void ARM7TDMI::thumbLoadAddress(u16 opcode) {
 	} else {
 		reg.R[destinationReg] = (reg.R[15] & ~3) + ((opcode & 0xFF) << 2);
 	}
+	fetchOpcode();
 }
 
 template <bool isNegative>
@@ -2091,60 +1482,62 @@ void ARM7TDMI::thumbSpAddOffset(u16 opcode) {
 	} else {
 		reg.R[13] += operand;
 	}
+	fetchOpcode();
 }
 
 template <bool loadStore, bool pcLr>
 void ARM7TDMI::thumbPushPopRegisters(u16 opcode) {
 	u32 address = reg.R[13];
-	u32 writeBackAddress;
 	bool emptyRegList = ((opcode & 0xFF) == 0) && !pcLr;
 
+	bool firstReadWrite = true;
 	if constexpr (loadStore) { // POP/LDMIA!
-		writeBackAddress = address + std::popcount((u32)opcode & 0xFF) * 4;
+		u32 writeBackAddress = address + std::popcount((u32)opcode & 0xFF) * 4;
 		if (emptyRegList)
 			writeBackAddress += 0x40;
-
 		reg.R[13] = writeBackAddress + (pcLr * 4);
+		fetchOpcode(); // Writeback really should be inside the main loop but this works
 
 		if (emptyRegList) {
-			reg.R[15] = bus.read<u32>(address); // TODO rotate
-			pipelineStage = 1;
-			incrementR15 = false;
+			reg.R[15] = bus.read<u32>(address, false);
+			flushPipeline();
 		} else {
 			for (int i = 0; i < 8; i++) {
 				if (opcode & (1 << i)) {
-					u32 val = bus.read<u32>(address);
+					u32 val = bus.read<u32>(address, !firstReadWrite);
 					reg.R[i] = (val >> ((4 - (address & 3)) * 8)) | (val << ((address & 3) * 8)); // Undo rotate
 					address += 4;
+
+					if (firstReadWrite)
+						firstReadWrite = false;
 				}
 			}
+			iCycle(1);
 			if constexpr (pcLr) {
-				reg.R[15] = bus.read<u32>(address) & ~1;
-				pipelineStage = 1;
-				incrementR15 = false;
+				reg.R[15] = bus.read<u32>(address, true);
+				flushPipeline();
 			}
 		}
 	} else { // PUSH/STMDB!
 		address -= (std::popcount((u32)opcode & 0xFF) + pcLr) * 4;
 		if (emptyRegList)
 			address -= 0x40;
-		writeBackAddress = address;
+		reg.R[13] = address;
+		fetchOpcode();
 
 		if (emptyRegList) {
-			bus.write<u32>(address, reg.R[15] + 2);
-			reg.R[13] = writeBackAddress;
+			bus.write<u32>(address, reg.R[15] + 2, false);
 		} else {
 			for (int i = 0; i < 8; i++) {
 				if (opcode & (1 << i)) {
-					bus.write<u32>(address, reg.R[i]);
+					bus.write<u32>(address, reg.R[i], !firstReadWrite);
 					address += 4;
 				}
 			}
 			if constexpr (pcLr)
-				bus.write<u32>(address, reg.R[14]);
-
-			reg.R[13] = writeBackAddress;
+				bus.write<u32>(address, reg.R[14], true);
 		}
+		nextFetchType = false;
 	}
 }
 
@@ -2157,34 +1550,38 @@ void ARM7TDMI::thumbMultipleLoadStore(u16 opcode) {
 	writeBackAddress = address + std::popcount((u32)opcode & 0xFF) * 4;
 	if (emptyRegList)
 		writeBackAddress += 0x40;
+	fetchOpcode();
 
-	if constexpr (loadStore) { // LDM
-		if (!(opcode & (1 << baseReg)))
-			reg.R[baseReg] = writeBackAddress;
-
+	bool firstReadWrite = true;
+	if constexpr (loadStore) { // LDMIA!
 		if (emptyRegList) {
-			reg.R[15] = bus.read<u32>(address); // TODO rotate
-			pipelineStage = 1;
-			incrementR15 = false;
+			reg.R[baseReg] = writeBackAddress;
+			reg.R[15] = bus.read<u32>(address, true);
+			flushPipeline();
 		} else {
 			for (int i = 0; i < 8; i++) {
 				if (opcode & (1 << i)) {
-					u32 val = bus.read<u32>(address);
+					if (firstReadWrite)
+						reg.R[baseReg] = writeBackAddress;
+
+					u32 val = bus.read<u32>(address, !firstReadWrite);
 					reg.R[i] = (val >> ((4 - (address & 3)) * 8)) | (val << ((address & 3) * 8)); // Undo rotate
 					address += 4;
+
+					if (firstReadWrite)
+						firstReadWrite = false;
 				}
 			}
+			iCycle(1);
 		}
-	} else { // STM
+	} else { // STMIA!
 		if (emptyRegList) {
-			bus.write<u32>(address, reg.R[15] + 2);
+			bus.write<u32>(address, reg.R[15], false);
 			reg.R[baseReg] = writeBackAddress;
 		} else {
-			bool firstReadWrite = true;
-
 			for (int i = 0; i < 8; i++) {
 				if (opcode & (1 << i)) {
-					bus.write<u32>(address, reg.R[i]);
+					bus.write<u32>(address, reg.R[i], !firstReadWrite);
 					address += 4;
 
 					if (firstReadWrite) {
@@ -2194,30 +1591,36 @@ void ARM7TDMI::thumbMultipleLoadStore(u16 opcode) {
 				}
 			}
 		}
+		nextFetchType = false;
 	}
 }
 
 template <int condition>
 void ARM7TDMI::thumbConditionalBranch(u16 opcode) {
+	u32 newAddress = reg.R[15] + ((i16)(opcode << 8) >> 7);
+	fetchOpcode();
+
 	if (checkCondition(condition)) {
-		reg.R[15] += ((i16)(opcode << 8) >> 7);
-		pipelineStage = 1;
-		incrementR15 = false;
+		reg.R[15] = newAddress;
+		flushPipeline();
 	}
 }
 
 void ARM7TDMI::thumbSoftwareInterrupt(u16 opcode) {
+	fetchOpcode();
 	bankRegisters(MODE_SUPERVISOR, true);
+	reg.R[14] = reg.R[15] - 4;
 
 	reg.R[15] = 0x8;
-	pipelineStage = 1;
-	incrementR15 = false;
+	flushPipeline();
 }
 
 void ARM7TDMI::thumbUncondtionalBranch(u16 opcode) {
-	reg.R[15] += (i16)((u16)opcode << 5) >> 4;
-	pipelineStage = 1;
-	incrementR15 = false;
+	u32 newAddress = reg.R[15] + ((i16)(opcode << 5) >> 4);
+	fetchOpcode();
+
+	reg.R[15] = newAddress;
+	flushPipeline();
 }
 
 template <bool lowHigh>
@@ -2225,11 +1628,13 @@ void ARM7TDMI::thumbLongBranchLink(u16 opcode) {
 	if constexpr (lowHigh) {
 		u32 address = reg.R[14] + ((opcode & 0x7FF) << 1);
 		reg.R[14] = (reg.R[15] - 2) | 1;
-		reg.R[15] = address & ~1;
-		pipelineStage = 1;
-		incrementR15 = false;
+		fetchOpcode();
+
+		reg.R[15] = address;
+		flushPipeline();
 	} else {
 		reg.R[14] = reg.R[15] + ((i32)((u32)opcode << 21) >> 9);
+		fetchOpcode();
 	}
 }
 

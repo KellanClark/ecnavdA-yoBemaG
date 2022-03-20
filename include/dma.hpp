@@ -12,8 +12,7 @@ public:
 	GBADMA(GameBoyAdvance& bus_);
 	void reset();
 
-	static void dmaEndEvent(void *object);
-	void dmaEnd();
+	static void dmaCheckEvent(void *object);
 
 	void onVBlank();
 	void onHBlank();
@@ -21,6 +20,7 @@ public:
 	void onFifoB();
 	void checkDma();
 	template <int channel> void doDma();
+	inline void dmaEnd();
 
     u8 readIO(u32 address);
 	void writeIO(u32 address, u8 value);

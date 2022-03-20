@@ -10,22 +10,6 @@
 GameBoyAdvance::GameBoyAdvance() : cpu(*this), apu(*this), dma(*this), ppu(*this), timer(*this) {
 	logFlash = false;
 
-	// Fill page tables
-	for (int i = toPage(0x2000000); i < toPage(0x3000000); i += (256 / 32)) { // EWRAM
-		for (int j = i; j < (i + (256 / 32)); j++) {
-			pageTableRead[j] = pageTableWrite[j] = pageTableWriteByte[j] = &ewram[(j - i) << 15];
-		}
-	}
-	for (int i = toPage(0x3000000); i < toPage(0x4000000); i++) { // IWRAM
-		pageTableRead[i] = pageTableWrite[i] = pageTableWriteByte[i] = &iwram[0];
-	}
-	for (int i = toPage(0x6000000); i < toPage(0x7000000); i += 4) { // VRAM
-		pageTableRead[i] = pageTableWrite[i] = &ppu.vram[0];
-		pageTableRead[i + 1] = pageTableWrite[i + 1] = &ppu.vram[0x08000];
-		pageTableRead[i + 2] = pageTableWrite[i + 2] = &ppu.vram[0x10000];
-		pageTableRead[i + 3] = pageTableWrite[i + 3] = &ppu.vram[0x10000];
-	}
-
 	reset();
 }
 
@@ -45,6 +29,16 @@ void GameBoyAdvance::reset() {
 	memset(iwram, 0, sizeof(iwram));
 	KEYINPUT = 0x3FF;
 	KEYCNT = 0;
+	POSTFLG = false;
+
+	WAITCNT = 0;
+	sramCycles = 4;
+	ws0NonSequentialCycles = 4;
+	ws0SequentialCycles = 2;
+	ws1NonSequentialCycles = 4;
+	ws1SequentialCycles = 4;
+	ws2NonSequentialCycles = 4;
+	ws2SequentialCycles = 8;
 
 	systemEvents.reset();
 	cpu.reset();
@@ -90,13 +84,12 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 		return -1;
 	}
 	romFileStream.seekg(0, std::ios::end);
-	size_t romSize = romFileStream.tellg();
+	romSize = romFileStream.tellg();
 	romFileStream.seekg(0, std::ios::beg);
 	romBuff.resize(romSize);
 	romFileStream.read(reinterpret_cast<char *>(romBuff.data()), romSize);
 	romFileStream.close();
 
-	romBuff.resize(0x2000000);
 	{ // Round rom size to power of 2 https://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
 		u32 v = romSize - 1;
 		v |= v >> 1;
@@ -108,17 +101,10 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	}
 
 	// Fill open bus values
+	romBuff.resize(0x2000000);
 	for (int i = romSize; i < 0x2000000; i += 2) {
 		romBuff[i] = (i / 2) & 0xFF;
 		romBuff[i + 1] = ((i / 2) >> 8) & 0xFF;
-	}
-
-	// Fill page table for rom buffer
-	for (int pageIndex = 0; pageIndex < toPage(0x2000000); pageIndex++) {
-		u8 *ptr = &romBuff[pageIndex << 15];
-		pageTableRead[pageIndex | toPage(0x8000000)] = ptr; // 0x0800'0000 - 0x09FF'FFFF
-		pageTableRead[pageIndex | toPage(0xA000000)] = ptr; // 0x0A00'0000 - 0x0BFF'FFFF
-		pageTableRead[pageIndex | toPage(0xC000000)] = ptr; // 0x0C00'0000 - 0x0DFF'FFFF
 	}
 
 	// Open save file
@@ -176,46 +162,56 @@ void GameBoyAdvance::save() {
 }
 
 u8 GameBoyAdvance::readDebug(u32 address) {
-	int page = (address & 0x0FFFFFFF) >> 15;
-	int offset = address & 0x7FFF;
-	void *pointer = pageTableRead[page];
+	int page = address >> 15;
+	u32 offset;
 
 	u8 val = 0;
-	if (address <= 0x0FFFFFFF) { [[likely]]
-		if (pointer != NULL) {
-			std::memcpy(&val, (u8*)pointer + offset, 1);
-		} else {
-			switch (page) {
-			case toPage(0x0000000): // BIOS
-				if (address <= 0x3FFF) {
-					val = biosBuff[address];
-				}
-				break;
-			case toPage(0x4000000): // I/O
-				val = readIO(address);
-				break;
-			case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
-				val = ppu.paletteRam[offset & 0x3FF];
-				break;
-			case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
-				val = ppu.oam[offset & 0x3FF];
-				break;
-			case toPage(0xE000000) ... toPage(0x10000000) - 1:
-				if (saveType == SRAM_32K) {
-					val = sram[address & 0x7FFF];
-				} else if (saveType == FLASH_128K) {
-					offset = address & 0xFFFF;
-					if (flashChipId && (offset == 0)) { [[unlikely]] // Read chip ID instead of data
-						val = 0x62;
-					} else if (flashChipId && (offset == 1)) { [[unlikely]]
-						val = 0x13;
-					} else {
-						val = sram[flashBank | (address & 0xFFFF)];
-					}
-				}
-				break;
+	switch (page) {
+	case toPage(0x0000000): // BIOS
+		if (address <= 0x3FFF) {
+			val = biosBuff[address];
+		}
+		break;
+	case toPage(0x2000000) ... toPage(0x3000000) - 1: // EWRAM
+		val = ewram[address & 0x3FFFF];
+		break;
+	case toPage(0x3000000) ... toPage(0x4000000) - 1: // IWRAM
+		val = iwram[address & 0x7FFF];
+		break;
+	case toPage(0x4000000): // I/O
+		val = readIO(address);
+		break;
+	case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
+		val = ppu.paletteRam[address & 0x3FF];
+		break;
+	case toPage(0x6000000) ... toPage(0x7000000) - 1: // VRAM
+		offset = address & 0x1FFFF;
+		if (offset > 0x17FFF)
+			offset -= 0x8000;
+		val = ppu.paletteRam[offset];
+		break;
+	case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
+		val = ppu.oam[address & 0x3FF];
+		break;
+	case toPage(0x8000000) ... toPage(0xA000000) - 1: // ROM
+	case toPage(0xA000000) ... toPage(0xC000000) - 1:
+	case toPage(0xC000000) ... toPage(0xE000000) - 1:
+		val = romBuff[address & 0x1FFFFFF];
+		break;
+	case toPage(0xE000000) ... toPage(0x10000000) - 1:
+		if (saveType == SRAM_32K) {
+			val = sram[address & 0x7FFF];
+		} else if (saveType == FLASH_128K) {
+			offset = address & 0xFFFF;
+			if (flashChipId && (offset == 0)) { [[unlikely]] // Read chip ID instead of data
+				val = 0x62;
+			} else if (flashChipId && (offset == 1)) { [[unlikely]]
+				val = 0x13;
+			} else {
+				val = sram[flashBank | (address & 0xFFFF)];
 			}
 		}
+		break;
 	}
 
 	return val;
@@ -230,76 +226,125 @@ template u16 GameBoyAdvance::openBus<u16>(u32);
 template u32 GameBoyAdvance::openBus<u32>(u32);
 
 template <typename T>
-u32 GameBoyAdvance::read(u32 address) {
-	int page = (address & 0x0FFFFFFF) >> 15;
-	int offset = address & 0x7FFF & ~(sizeof(T) - 1);
-	void *pointer = pageTableRead[page];
+u32 GameBoyAdvance::read(u32 address, bool sequential) {
+	int page = address >> 15;
+	u32 alignedAddress = address & ~(sizeof(T) - 1);
+	u32 offset;
+
+	sequential = sequential && !forceNonSequential && (address & 0x1FFFF);
+	forceNonSequential = false;
 
 	u32 val = openBus<T>(address);
-	if (address <= 0x0FFFFFFF) { [[likely]]
-		if (pointer != NULL) {
-			std::memcpy(&val, (u8*)pointer + offset, sizeof(T));
+	switch (page) {
+	case toPage(0x0000000): // BIOS
+		systemEvents.tickScheduler(1);
+
+		if ((address <= 0x3FFF) && (cpu.reg.R[15] < 0x2000000)) {
+			std::memcpy(&val, (u8*)biosBuff.data() + alignedAddress, sizeof(T));
+		}
+		break;
+	case toPage(0x2000000) ... toPage(0x3000000) - 1: // EWRAM
+		if constexpr (sizeof(T) == 4) {
+			systemEvents.tickScheduler(6);
 		} else {
-			switch (page) {
-			case toPage(0x0000000): // BIOS
-				if ((address <= 0x3FFF) && (cpu.reg.R[15] < 0x2000000)) {
-					std::memcpy(&val, (u8*)biosBuff.data() + offset, sizeof(T));
-				}
-				break;
-			case toPage(0x4000000): // I/O
-				// Split everything into u8
-				if (sizeof(T) == 4) {
-					u32 val = readIO((address & ~3) | 0);
-					val |= readIO((address & ~3) | 1) << 8;
-					val |= readIO((address & ~3) | 2) << 16;
-					val |= readIO((address & ~3) | 3) << 24;
-					return val;
-				} else if (sizeof(T) == 2) {
-					u16 val = readIO((address & ~1) | 0);
-					val |= readIO((address & ~1) | 1) << 8;
-					return val;
-				} else if (sizeof(T) == 1) {
-					return readIO(address);
-				}
-				break;
-			case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
-				std::memcpy(&val, &ppu.paletteRam[0] + (offset & 0x3FF), sizeof(T));
-				break;
-			case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
-				std::memcpy(&val, &ppu.oam[0] + (offset & 0x3FF), sizeof(T));
-				break;
-			case toPage(0xE000000) ... toPage(0x10000000) - 1:
-				if (saveType == SRAM_32K) {
-					val = sram[address & 0x7FFF];
+			systemEvents.tickScheduler(3);
+		}
 
-					if (sizeof(T) == 2) {
-						val *= 0x0101;
-					} else if (sizeof(T) == 4) {
-						val *= 0x01010101;
-					}
-				} else if (saveType == FLASH_128K) {
-					offset = address & 0xFFFF;
-					if (flashChipId && (offset == 0)) { [[unlikely]] // Read chip ID instead of data
-						val = 0x62;
-					} else if (flashChipId && (offset == 1)) { [[unlikely]]
-						val = 0x13;
-					} else {
-						val = sram[flashBank | (address & 0xFFFF)];
-					}
+		std::memcpy(&val, &ewram[0] + (alignedAddress & 0x3FFFF), sizeof(T));
+		break;
+	case toPage(0x3000000) ... toPage(0x4000000) - 1: // IWRAM
+		systemEvents.tickScheduler(1);
 
-					/*if (sizeof(T) == 2) {
-						val *= 0x0101;
-					} else if (sizeof(T) == 4) {
-						val *= 0x01010101;
-					}*/
-				}
-				break;
+		std::memcpy(&val, &iwram[0] + (alignedAddress & 0x7FFF), sizeof(T));
+		break;
+	case toPage(0x4000000): // I/O
+		systemEvents.tickScheduler(1);
+
+		// Split everything into u8
+		if (sizeof(T) == 4) {
+			u32 val = readIO(alignedAddress | 0);
+			val |= readIO(alignedAddress | 1) << 8;
+			val |= readIO(alignedAddress | 2) << 16;
+			val |= readIO(alignedAddress | 3) << 24;
+			return val;
+		} else if (sizeof(T) == 2) {
+			u16 val = readIO(alignedAddress | 0);
+			val |= readIO(alignedAddress | 1) << 8;
+			return val;
+		} else if (sizeof(T) == 1) {
+			return readIO(address);
+		}
+		break;
+	case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
+		if constexpr (sizeof(T) == 4) {
+			systemEvents.tickScheduler(2);
+		} else {
+			systemEvents.tickScheduler(1);
+		}
+
+		std::memcpy(&val, &ppu.paletteRam[0] + (alignedAddress & 0x3FF), sizeof(T));
+		break;
+	case toPage(0x6000000) ... toPage(0x7000000) - 1: // VRAM
+		if constexpr (sizeof(T) == 4) {
+			systemEvents.tickScheduler(2);
+		} else {
+			systemEvents.tickScheduler(1);
+		}
+
+		offset = alignedAddress & 0x1FFFF;
+		if (offset > 0x17FFF)
+			offset -= 0x8000;
+		std::memcpy(&val, &ppu.vram[0] + offset, sizeof(T));
+		break;
+	case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
+		systemEvents.tickScheduler(1);
+
+		std::memcpy(&val, &ppu.oam[0] + (alignedAddress & 0x3FF), sizeof(T));
+		break;
+	case toPage(0x8000000) ... toPage(0xA000000) - 1: // ROM (Waitstate 0)
+		systemEvents.tickScheduler((sequential ? ws0SequentialCycles : ws0NonSequentialCycles) + ((sizeof(T) == 4) ? (ws0SequentialCycles + 2) : 1));
+
+		std::memcpy(&val, (u8*)romBuff.data() + (alignedAddress & 0x1FFFFFF), sizeof(T));
+		break;
+	case toPage(0xA000000) ... toPage(0xC000000) - 1: // ROM (Waitstate 1)
+		systemEvents.tickScheduler((sequential ? ws1SequentialCycles : ws1NonSequentialCycles) + ((sizeof(T) == 4) ? (ws1SequentialCycles + 2) : 1));
+
+		std::memcpy(&val, (u8*)romBuff.data() + (alignedAddress & 0x1FFFFFF), sizeof(T));
+		break;
+	case toPage(0xC000000) ... toPage(0xE000000) - 1: // ROM (Waitstate 2)
+		systemEvents.tickScheduler((sequential ? ws2SequentialCycles : ws2NonSequentialCycles) + ((sizeof(T) == 4) ? (ws2SequentialCycles + 2) : 1));
+
+		std::memcpy(&val, (u8*)romBuff.data() + (alignedAddress & 0x1FFFFFF), sizeof(T));
+		break;
+	case toPage(0xE000000) ... toPage(0x10000000) - 1:
+		systemEvents.tickScheduler(1);
+
+		if (saveType == SRAM_32K) {
+			val = sram[address & 0x7FFF];
+
+			if constexpr (sizeof(T) == 2) {
+				val *= 0x0101;
+			} else if constexpr (sizeof(T) == 4) {
+				val *= 0x01010101;
+			}
+		} else if (saveType == FLASH_128K) {
+			offset = address & 0xFFFF;
+			if (flashChipId && (offset == 0)) { [[unlikely]] // Read chip ID instead of data
+				val = 0x62;
+			} else if (flashChipId && (offset == 1)) { [[unlikely]]
+				val = 0x13;
+			} else {
+				val = sram[flashBank | (address & 0xFFFF)];
 			}
 		}
+		break;
+	default:
+		systemEvents.tickScheduler(1);
+		break;
 	}
 
 	u32 newOpenBus = 0;
-	if (sizeof(T) == 2) {
+	if constexpr (sizeof(T) == 2) {
 		switch (page) {
 		case toPage(0x2000000) ... toPage(0x3000000) - 1: // EWRAM
 		case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
@@ -323,7 +368,7 @@ u32 GameBoyAdvance::read(u32 address) {
 			}
 			break;
 		}
-	} else if (sizeof(T) == 4) {
+	} else if constexpr (sizeof(T) == 4) {
 		newOpenBus = val;
 	}
 	if (cpu.reg.R[15] < 0x2000000) {
@@ -340,22 +385,22 @@ u32 GameBoyAdvance::read(u32 address) {
 
 	return val;
 }
-template u32 GameBoyAdvance::read<u8>(u32);
-template u32 GameBoyAdvance::read<u16>(u32);
-template u32 GameBoyAdvance::read<u32>(u32);
+template u32 GameBoyAdvance::read<u8>(u32, bool);
+template u32 GameBoyAdvance::read<u16>(u32, bool);
+template u32 GameBoyAdvance::read<u32>(u32, bool);
 
 u8 GameBoyAdvance::readIO(u32 address) {
 	int offset = address & 0x7FFF;
 	switch (offset) {
 	case 0x000 ... 0x055: // PPU
 		return ppu.readIO(address);
-	
+
 	case 0x060 ... 0x0A7: // APU
 		return apu.readIO(address);
 
 	case 0x0B0 ... 0x0DF: // DMA
 		return dma.readIO(address);
-	
+
 	case 0x100 ... 0x10F: // Timer
 		return timer.readIO(address);
 
@@ -368,7 +413,7 @@ u8 GameBoyAdvance::readIO(u32 address) {
 	case 0x133:
 		return (u8)(KEYCNT >> 8);
 
-	case 0x200: // Interrupts
+	case 0x200: // Misc.
 		return (u8)cpu.IE;
 	case 0x201:
 		return (u8)(cpu.IE >> 8);
@@ -376,152 +421,324 @@ u8 GameBoyAdvance::readIO(u32 address) {
 		return (u8)cpu.IF;
 	case 0x203:
 		return (u8)(cpu.IF >> 8);
+	case 0x204:
+		return (u8)WAITCNT;
+	case 0x205:
+		return (u8)(WAITCNT >> 8);
+	case 0x206:
+	case 0x207:
+		return 0;
 	case 0x208:
 		return (u8)cpu.IME;
 	case 0x209:
 	case 0x20A:
 	case 0x20B:
 		return 0;
-	
+	case 0x300:
+		return (u8)POSTFLG;
+	case 0x301: // TODO: Are these 0?
+	case 0x302:
+	case 0x303:
+		return 0;
+
 	default:
 		return openBus<u8>(address);
 	}
 }
 
-template <typename T>
-void GameBoyAdvance::write(u32 address, T value) {
-	int page = (address & 0x0FFFFFFF) >> 15;
-	int offset = address & 0x7FFF & ~(sizeof(T) - 1);
-	void *pointer = (sizeof(T) == 1) ? pageTableWriteByte[page] : pageTableWrite[page];
+void GameBoyAdvance::writeDebug(u32 address, u8 value, bool unrestricted) {
+	int page = address >> 15;
+	int offset;
 
-	if (address <= 0x0FFFFFFF) { [[likely]]
-		if (pointer != NULL) {
-			std::memcpy((u8*)pointer + offset, &value, sizeof(T));
-		} else {
-			switch (page) {
-			case toPage(0x4000000): // I/O
-				if (sizeof(T) == 4) {
-					writeIO((address & ~3) | 0, (u8)value);
-					writeIO((address & ~3) | 1, (u8)(value >> 8));
-					writeIO((address & ~3) | 2, (u8)(value >> 16));
-					writeIO((address & ~3) | 3, (u8)(value >> 24));
-					return;
-				} else if (sizeof(T) == 2) {
-					writeIO((address & ~1) | 0, (u8)value);
-					writeIO((address & ~1) | 1, (u8)(value >> 8));
-					return;
-				} else if (sizeof(T) == 1) {
-					writeIO(address, value);
-					return;
-				}
-				break;
-			case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
-				if (sizeof(T) == 1) {
-					ppu.paletteRam[offset & 0x3FE] = value;
-					ppu.paletteRam[(offset & 0x3FE) | 1] = value;
-				} else {
-					std::memcpy(&ppu.paletteRam[0] + (offset & 0x3FF), &value, sizeof(T));
-				}
-				break;
-			case toPage(0x6000000) ... toPage(0x7000000) - 1: // VRAM (byte only)
-				if ((address & 0x1FFFF) < 0x10000) {
-					ppu.vram[address & 0xFFFF] = value;
-					ppu.vram[(address & 0xFFFF) | 1] = value;
-				} else {
-					address &= 0x7FFF;
-					if ((ppu.bgMode > 2) && (address < 0x4000)) {
-						ppu.vram[(address & 0x7FFF) | 0x10000] = value;
-						ppu.vram[(address & 0x7FFF) | 0x10001] = value;
-					}
-				}
-				break;
-			case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
-				if (sizeof(T) != 1) {
-					std::memcpy(&ppu.oam[0] + (offset & 0x3FF), &value, sizeof(T));
-				}
-				break;
-			case toPage(0xE000000) ... toPage(0x10000000) - 1:
-				if (saveType == SRAM_32K) {
-					sram[address & 0x7FFF] = (u8)value;
-				} else if (saveType == FLASH_128K) {
-					value = (u8)value;
-					offset = address & 0xFFFF;
+	switch (page) {
+	case toPage(0x0000000): // BIOS
+		if (unrestricted && (address < 0x3FFF))
+			biosBuff[address] = value;
+	case toPage(0x2000000) ... toPage(0x3000000) - 1: // EWRAM
+		ewram[address & 0x3FFFF] = value;
+		break;
+	case toPage(0x3000000) ... toPage(0x4000000) - 1: // IWRAM
+		iwram[address & 0x7FFF] = value;
+		break;
+	case toPage(0x4000000): // I/O
+		writeIO(address, value);
+		break;
+	case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
+		ppu.paletteRam[address & 0x3FF] = value;
+		break;
+	case toPage(0x6000000) ... toPage(0x7000000) - 1: // VRAM
+		offset = address & 0x1FFFF;
+		if (offset > 0x17FFF)
+			offset -= 0x8000;
+		ppu.vram[offset] = value;
+		break;
+	case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
+		ppu.oam[address & 0x3FF] = value;
+		break;
+	case toPage(0x8000000) ... toPage(0xE000000) - 1: // ROM
+		offset = address & 0x1000000;
+		if (unrestricted && (offset < romSize)) {
+			romBuff[offset] = value;
+		}
+		break;
+	case toPage(0xE000000) ... toPage(0x10000000) - 1:
+		if (saveType == SRAM_32K) {
+			sram[address & 0x7FFF] = value;
+		} else if (saveType == FLASH_128K) {
+			value = (u8)value;
+			offset = address & 0xFFFF;
 
-					if ((offset == 0x0000) && (flashState & BANK)) {
-						flashBank = (value & 1) << 16;
+			if (unrestricted) {
+				sram[offset] = value;
+			} else if ((offset == 0x0000) && (flashState & BANK)) {
+				flashBank = (value & 1) << 16;
+				flashState = READY;
+
+				if (logFlash)
+					log << "Flash command 0xB0: Chose bank " << (value & 1) << "\n";
+			} else if (flashState & WRITE) {
+				sram[flashBank | offset] = value;
+				flashState = READY;
+
+				if (logFlash)
+					log << fmt::format("Flash command 0xA0: Wrote 0x{:0>2X} to 0x{:0>4X}\n", value, (flashBank | offset));
+			} else if (offset == 0x2AAA) {
+				if ((flashState & CMD_1) && (value == 0x55)) {
+					flashState &= ~CMD_1;
+					flashState |= CMD_2;
+				}
+			} else if (offset == 0x5555) {
+				if ((flashState & READY) && (value == 0xAA)) {
+					flashState &= ~READY;
+					flashState |= CMD_1;
+				} else if (flashState & CMD_2) {
+					if ((value == 0x10) && (flashState & ERASE)) { // Erase entire chip
+						memset(sram.data(), 0xFF, sram.size());
 						flashState = READY;
 
 						if (logFlash)
-							log << "Flash command 0xB0: Chose bank " << (value & 1) << "\n";
-					} else if (flashState & WRITE) {
-						sram[flashBank | offset] = value;
+							log << "Flash command 0x80-0x10: Erase entire chip\n";
+					} else if ((value == 0x80) && !(flashState & ~0x7)) { // Prepare for erase command
+						flashState = READY | ERASE;
+
+						if (logFlash)
+							log << "Flash command 0x80: Prepare for erase command\n";
+					} else if ((value == 0x90) && !(flashState & ~0x7)) { // Enter Chip ID mode
+						flashChipId = true;
 						flashState = READY;
 
 						if (logFlash)
-							log << fmt::format("Flash command 0xA0: Wrote 0x{:0>2X} to 0x{:0>4X}\n", value, (flashBank | offset));
-					} else if (offset == 0x2AAA) {
-						if ((flashState & CMD_1) && (value == 0x55)) {
-							flashState &= ~CMD_1;
-							flashState |= CMD_2;
-						}
-					} else if (offset == 0x5555) {
-						if ((flashState & READY) && (value == 0xAA)) {
-							flashState &= ~READY;
-							flashState |= CMD_1;
-						} else if (flashState & CMD_2) {
-							if ((value == 0x10) && (flashState & ERASE)) { // Erase entire chip
-								memset(sram.data(), 0xFF, sram.size());
-								flashState = READY;
+							log << "Flash command 0x90: Enter Chip ID mode\n";
+					} else if ((value == 0xA0) && !(flashState & ~0x7)) { // Prepare for write
+						flashState = WRITE;
 
-								if (logFlash)
-									log << "Flash command 0x80-0x10: Erase entire chip\n";
-							} else if ((value == 0x80) && !(flashState & ~0x7)) { // Prepare for erase command
-								flashState = READY | ERASE;
+						if (logFlash)
+							log << "Flash command 0xA0: Prepare for write\n";
+					} else if ((value == 0xB0) && !(flashState & ~0x7) && (saveType == FLASH_128K)) { // Select memory bank
+						flashState = BANK;
 
-								if (logFlash)
-									log << "Flash command 0x80: Prepare for erase command\n";
-							} else if ((value == 0x90) && !(flashState & ~0x7)) { // Enter Chip ID mode
-								flashChipId = true;
-								flashState = READY;
+						if (logFlash)
+							log << "Flash command 0xB0: Select memory bank\n";
+					} else if ((value == 0xF0) && !(flashState & ~0x7)) { // Exit Chip ID mode
+						flashChipId = false;
+						flashState = READY;
 
-								if (logFlash)
-									log << "Flash command 0x90: Enter Chip ID mode\n";
-							} else if ((value == 0xA0) && !(flashState & ~0x7)) { // Prepare for write
-								flashState = WRITE;
-
-								if (logFlash)
-									log << "Flash command 0xA0: Prepare for write\n";
-							} else if ((value == 0xB0) && !(flashState & ~0x7) && (saveType == FLASH_128K)) { // Select memory bank
-								flashState = BANK;
-
-								if (logFlash)
-									log << "Flash command 0xB0: Select memory bank\n";
-							} else if ((value == 0xF0) && !(flashState & ~0x7)) { // Exit Chip ID mode
-								flashChipId = false;
-								flashState = READY;
-
-								if (logFlash)
-									log << "Flash command 0xF0: Exit Chip ID mode\n";
-							}
-						}
-					} else if ((offset & 0xFFF) == 0) { // Erase 4KB sector
-						if ((value == 0x30) && (flashState & (CMD_2 | ERASE))) {
-							memset(&sram[flashBank | (offset & 0xF000)], 0xFF, 0x1000);
-							flashState = READY;
-
-							if (logFlash)
-								log << fmt::format("Flash command 0x80-0x30: Erase 4KB sector 0x{0:X}000-0x{0:X}FFF\n", (flashBank | (offset & 0xF000)) >> 12);
-						}
+						if (logFlash)
+							log << "Flash command 0xF0: Exit Chip ID mode\n";
 					}
 				}
-				break;
+			} else if ((offset & 0xFFF) == 0) { // Erase 4KB sector
+				if ((value == 0x30) && (flashState & (CMD_2 | ERASE))) {
+					memset(&sram[flashBank | (offset & 0xF000)], 0xFF, 0x1000);
+					flashState = READY;
+
+					if (logFlash)
+						log << fmt::format("Flash command 0x80-0x30: Erase 4KB sector 0x{0:X}000-0x{0:X}FFF\n", (flashBank | (offset & 0xF000)) >> 12);
+				}
 			}
 		}
+		break;
 	}
 }
-template void GameBoyAdvance::write<u8>(u32, u8);
-template void GameBoyAdvance::write<u16>(u32, u16);
-template void GameBoyAdvance::write<u32>(u32, u32);
+
+template <typename T>
+void GameBoyAdvance::write(u32 address, T value, bool sequential) {
+	int page = address >> 15;
+	u32 alignedAddress = address & ~(sizeof(T) - 1);
+	int offset;
+
+	sequential = sequential && !forceNonSequential && (address & 0x1FFFF);
+	forceNonSequential = false;
+
+	switch (page) {
+	case toPage(0x2000000) ... toPage(0x3000000) - 1: // EWRAM
+		if constexpr (sizeof(T) == 4) {
+			systemEvents.tickScheduler(6);
+		} else {
+			systemEvents.tickScheduler(3);
+		}
+
+		std::memcpy(&ewram[0] + (alignedAddress & 0x3FFFF), &value, sizeof(T));
+		break;
+	case toPage(0x3000000) ... toPage(0x4000000) - 1: // IWRAM
+		systemEvents.tickScheduler(1);
+
+		std::memcpy(&iwram[0] + (alignedAddress & 0x7FFF), &value, sizeof(T));
+		break;
+	case toPage(0x4000000): // I/O
+		systemEvents.tickScheduler(1);
+
+		if constexpr (sizeof(T) == 4) {
+			writeIO((address & ~3) | 0, (u8)value);
+			writeIO((address & ~3) | 1, (u8)(value >> 8));
+			writeIO((address & ~3) | 2, (u8)(value >> 16));
+			writeIO((address & ~3) | 3, (u8)(value >> 24));
+			return;
+		} else if constexpr (sizeof(T) == 2) {
+			writeIO((address & ~1) | 0, (u8)value);
+			writeIO((address & ~1) | 1, (u8)(value >> 8));
+			return;
+		} else if (sizeof(T) == 1) {
+			writeIO(address, value);
+			return;
+		}
+		break;
+	case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
+		if constexpr (sizeof(T) == 4) {
+			systemEvents.tickScheduler(2);
+		} else {
+			systemEvents.tickScheduler(1);
+		}
+
+		if constexpr (sizeof(T) == 1) {
+			ppu.paletteRam[alignedAddress & 0x3FE] = value;
+			ppu.paletteRam[(alignedAddress & 0x3FE) | 1] = value;
+		} else {
+			std::memcpy(&ppu.paletteRam[0] + (alignedAddress & 0x3FF), &value, sizeof(T));
+		}
+		break;
+	case toPage(0x6000000) ... toPage(0x7000000) - 1: // VRAM
+		if constexpr (sizeof(T) == 4) {
+			systemEvents.tickScheduler(2);
+		} else {
+			systemEvents.tickScheduler(1);
+		}
+
+		offset = alignedAddress & 0x1FFFF;
+		if (offset > 0x17FFF)
+			offset -= 0x8000;
+		if constexpr (sizeof(T) == 1) {
+			if (offset <= ((ppu.bgMode > 2) ? 0x13FFF : 0xFFFF)) {
+				ppu.vram[offset & ~1] = value;
+				ppu.vram[(offset & ~1) | 1] = value;
+			}
+		} else {
+			std::memcpy(&ppu.vram[0] + offset, &value, sizeof(T));
+		}
+		break;
+	case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
+		systemEvents.tickScheduler(1);
+
+		if constexpr (sizeof(T) != 1) {
+			std::memcpy(&ppu.oam[0] + (alignedAddress & 0x3FF), &value, sizeof(T));
+		}
+		break;
+	case toPage(0x8000000) ... toPage(0xA000000) - 1: // ROM (Waitstate 0)
+		systemEvents.tickScheduler((sequential ? ws0SequentialCycles : ws0NonSequentialCycles) + ((sizeof(T) == 4) ? (ws0SequentialCycles + 2) : 1));
+		break;
+	case toPage(0xA000000) ... toPage(0xC000000) - 1: // ROM (Waitstate 1)
+		systemEvents.tickScheduler((sequential ? ws1SequentialCycles : ws1NonSequentialCycles) + ((sizeof(T) == 4) ? (ws1SequentialCycles + 2) : 1));
+		break;
+	case toPage(0xC000000) ... toPage(0xE000000) - 1: // ROM (Waitstate 2)
+		systemEvents.tickScheduler((sequential ? ws2SequentialCycles : ws2NonSequentialCycles) + ((sizeof(T) == 4) ? (ws2SequentialCycles + 2) : 1));
+		break;
+	case toPage(0xE000000) ... toPage(0x10000000) - 1: // SRAM/Flash
+		systemEvents.tickScheduler(1);
+
+		if (saveType == SRAM_32K) {
+			sram[address & 0x7FFF] = (u8)value;
+		} else if (saveType == FLASH_128K) {
+			value = (u8)value;
+			offset = address & 0xFFFF;
+
+			if ((offset == 0x0000) && (flashState & BANK)) {
+				flashBank = (value & 1) << 16;
+				flashState = READY;
+
+				if (logFlash)
+					log << "Flash command 0xB0: Chose bank " << (value & 1) << "\n";
+			} else if (flashState & WRITE) {
+				sram[flashBank | offset] = value;
+				flashState = READY;
+
+				if (logFlash)
+					log << fmt::format("Flash command 0xA0: Wrote 0x{:0>2X} to 0x{:0>4X}\n", value, (flashBank | offset));
+			} else if (offset == 0x2AAA) {
+				if ((flashState & CMD_1) && (value == 0x55)) {
+					flashState &= ~CMD_1;
+					flashState |= CMD_2;
+				}
+			} else if (offset == 0x5555) {
+				if ((flashState & READY) && (value == 0xAA)) {
+					flashState &= ~READY;
+					flashState |= CMD_1;
+				} else if (flashState & CMD_2) {
+					if ((value == 0x10) && (flashState & ERASE)) { // Erase entire chip
+						memset(sram.data(), 0xFF, sram.size());
+						flashState = READY;
+
+						if (logFlash)
+							log << "Flash command 0x80-0x10: Erase entire chip\n";
+					} else if ((value == 0x80) && !(flashState & ~0x7)) { // Prepare for erase command
+						flashState = READY | ERASE;
+
+						if (logFlash)
+							log << "Flash command 0x80: Prepare for erase command\n";
+					} else if ((value == 0x90) && !(flashState & ~0x7)) { // Enter Chip ID mode
+						flashChipId = true;
+						flashState = READY;
+
+						if (logFlash)
+							log << "Flash command 0x90: Enter Chip ID mode\n";
+					} else if ((value == 0xA0) && !(flashState & ~0x7)) { // Prepare for write
+						flashState = WRITE;
+
+						if (logFlash)
+							log << "Flash command 0xA0: Prepare for write\n";
+					} else if ((value == 0xB0) && !(flashState & ~0x7) && (saveType == FLASH_128K)) { // Select memory bank
+						flashState = BANK;
+
+						if (logFlash)
+							log << "Flash command 0xB0: Select memory bank\n";
+					} else if ((value == 0xF0) && !(flashState & ~0x7)) { // Exit Chip ID mode
+						flashChipId = false;
+						flashState = READY;
+
+						if (logFlash)
+							log << "Flash command 0xF0: Exit Chip ID mode\n";
+					}
+				}
+			} else if ((offset & 0xFFF) == 0) { // Erase 4KB sector
+				if ((value == 0x30) && (flashState & (CMD_2 | ERASE))) {
+					memset(&sram[flashBank | (offset & 0xF000)], 0xFF, 0x1000);
+					flashState = READY;
+
+					if (logFlash)
+						log << fmt::format("Flash command 0x80-0x30: Erase 4KB sector 0x{0:X}000-0x{0:X}FFF\n", (flashBank | (offset & 0xF000)) >> 12);
+				}
+			}
+		}
+		break;
+	default:
+		systemEvents.tickScheduler(1);
+		break;
+	}
+}
+template void GameBoyAdvance::write<u8>(u32, u8, bool);
+template void GameBoyAdvance::write<u16>(u32, u16, bool);
+template void GameBoyAdvance::write<u32>(u32, u32, bool);
+
+static const int waitCycleTable[4] = {4, 3, 2, 8};
 
 void GameBoyAdvance::writeIO(u32 address, u8 value) {
 	int offset = address & 0x7FFF;
@@ -549,31 +766,58 @@ void GameBoyAdvance::writeIO(u32 address, u8 value) {
 		KEYCNT = (KEYCNT & 0x00FF) | ((value & 0xC3) << 8);
 		break;
 
-	case 0x200: // Interrupts
+	case 0x200: // Misc.
 		cpu.IE = (cpu.IE & 0x3F00) | value;
+		cpu.testInterrupt();
 		break;
 	case 0x201:
 		cpu.IE = (cpu.IE & 0x00FF) | ((value & 0x3F) << 8);
+		cpu.testInterrupt();
 		break;
 	case 0x202:
 		cpu.IF = (cpu.IF & ~value) & 0x3FFF;
+		cpu.testInterrupt();
 		break;
 	case 0x203:
 		cpu.IF = (cpu.IF & ~(value << 8)) & 0x3FFF;
+		cpu.testInterrupt();
+		break;
+	case 0x204:
+		WAITCNT = (WAITCNT & 0xFF00) | value;
+
+		sramCycles = waitCycleTable[sramWaitControl];
+		ws0NonSequentialCycles = waitCycleTable[ws0NonSequentialControl];
+		ws0SequentialCycles = ws0SequentialControl ? 1 : 2;
+		ws1NonSequentialCycles = waitCycleTable[ws1NonSequentialControl];
+		ws1SequentialCycles = ws1SequentialControl ? 1 : 4;
+		break;
+	case 0x205:
+		WAITCNT = (WAITCNT & 0x00FF) | ((value & 0x5F) << 8);
+
+		ws2NonSequentialCycles = waitCycleTable[ws2NonSequentialControl];
+		ws2SequentialCycles = ws2SequentialControl ? 1 : 8;
 		break;
 	case 0x208:
-		cpu.IME = (bool)value;
+		cpu.IME = (bool)(value & 1);
+		cpu.testInterrupt();
 		break;
-	case 0x209:
-	case 0x20A:
-	case 0x20B:
+	case 0x300: // POSTFLG
+		POSTFLG = (bool)(value & 1); // TODO: Is this writable outside BIOS?
+		break;
+	case 0x301: // HALTCNT
+		if (cpu.reg.R[15] <= 0x3FFF) {
+			cpu.halted = (bool)(value >> 7);
+			cpu.testInterrupt();
+		}
 		break;
 
-	case 0x301: // HALTCNT
-		cpu.halted = (bool)value;
-		break;
 	default:
 		//printf("Unknown I/O register write:  %07X  %02X\n", address, value);
 		break;
 	}
+}
+
+void GameBoyAdvance::internalCycle(int cycles) {
+	forceNonSequential = true;
+	systemEvents.tickScheduler(cycles);
 }
