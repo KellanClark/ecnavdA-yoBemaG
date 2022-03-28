@@ -89,7 +89,13 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 	case 0xC: condtionCode = "GT"; break;
 	case 0xD: condtionCode = "LE"; break;
 	case 0xE: condtionCode = options.showALCondition ? "AL" : ""; break;
-	default: return "Undefined";
+	default:
+		if (thumb) {
+			condtionCode = "Undefined";
+			break;
+		} else {
+			return "Undefined";
+		}
 	}
 
 	if (thumb) {
