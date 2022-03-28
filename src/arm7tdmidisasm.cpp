@@ -340,10 +340,10 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 
 			return disassembledOpcode.str();
 		} else if ((lutIndex & thumbSoftwareInterruptMask) == thumbSoftwareInterruptBits) {
-			if (options.printAddressesHex) {
-				disassembledOpcode << "SWI" << condtionCode << " #0x" << std::hex << (opcode & 0x00FF);
+			if (options.printOperandsHex) {
+				disassembledOpcode << "SWI" << " #0x" << std::hex << (opcode & 0x00FF);
 			} else {
-				disassembledOpcode << "SWI" << condtionCode << " #" << (opcode & 0x00FF);
+				disassembledOpcode << "SWI" << " #" << (opcode & 0x00FF);
 			}
 
 			return disassembledOpcode.str();
