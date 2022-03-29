@@ -72,26 +72,26 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 	std::stringstream disassembledOpcode;
 
 	// Get condition code
-	std::string condtionCode;
+	std::string conditionCode;
 	switch (thumb ? ((opcode >> 8) & 0xF) : (opcode >> 28)) {
-	case 0x0: condtionCode = "EQ"; break;
-	case 0x1: condtionCode = "NE"; break;
-	case 0x2: condtionCode = "CS"; break;
-	case 0x3: condtionCode = "CC"; break;
-	case 0x4: condtionCode = "MI"; break;
-	case 0x5: condtionCode = "PL"; break;
-	case 0x6: condtionCode = "VS"; break;
-	case 0x7: condtionCode = "VC"; break;
-	case 0x8: condtionCode = "HI"; break;
-	case 0x9: condtionCode = "LS"; break;
-	case 0xA: condtionCode = "GE"; break;
-	case 0xB: condtionCode = "LT"; break;
-	case 0xC: condtionCode = "GT"; break;
-	case 0xD: condtionCode = "LE"; break;
-	case 0xE: condtionCode = options.showALCondition ? "AL" : ""; break;
+	case 0x0: conditionCode = "EQ"; break;
+	case 0x1: conditionCode = "NE"; break;
+	case 0x2: conditionCode = "CS"; break;
+	case 0x3: conditionCode = "CC"; break;
+	case 0x4: conditionCode = "MI"; break;
+	case 0x5: conditionCode = "PL"; break;
+	case 0x6: conditionCode = "VS"; break;
+	case 0x7: conditionCode = "VC"; break;
+	case 0x8: conditionCode = "HI"; break;
+	case 0x9: conditionCode = "LS"; break;
+	case 0xA: conditionCode = "GE"; break;
+	case 0xB: conditionCode = "LT"; break;
+	case 0xC: conditionCode = "GT"; break;
+	case 0xD: conditionCode = "LE"; break;
+	case 0xE: conditionCode = options.showALCondition ? "AL" : ""; break;
 	default:
 		if (thumb) {
-			condtionCode = "Undefined";
+			conditionCode = "Undefined";
 			break;
 		} else {
 			return "Undefined";
@@ -350,7 +350,7 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 		} else if ((lutIndex & thumbConditionalBranchMask) == thumbConditionalBranchBits) {
 			u32 jmpAddress = address + ((i16)((u16)opcode << 8) >> 7) + 4;
 
-			disassembledOpcode << "B" << condtionCode << " #";
+			disassembledOpcode << "B" << conditionCode << " #";
 			if (options.printAddressesHex)
 				disassembledOpcode << "0x" << std::hex;
 			disassembledOpcode << jmpAddress;
@@ -398,7 +398,7 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 			} else {
 				disassembledOpcode << "MUL";
 			}
-			disassembledOpcode << condtionCode << (sBit ? "S" : "") << " ";
+			disassembledOpcode << conditionCode << (sBit ? "S" : "") << " ";
 			disassembledOpcode << getRegName((opcode >> 16) & 0xF) << ", " << getRegName(opcode & 0xF) << ", " << getRegName((opcode >> 8) & 0xF);
 
 			if (accumulate)
@@ -416,7 +416,7 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 			} else {
 				disassembledOpcode << "MULL";
 			}
-			disassembledOpcode << condtionCode << (sBit ? "S" : "") << " ";
+			disassembledOpcode << conditionCode << (sBit ? "S" : "") << " ";
 			disassembledOpcode << getRegName((opcode >> 12) & 0xF) << ", " << getRegName((opcode >> 16) & 0xF) << ", " << getRegName(opcode & 0xF) << ", " << getRegName((opcode >> 8) & 0xF);
 
 			if (accumulate)
@@ -426,21 +426,21 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 		} else if ((lutIndex & armSingleDataSwapMask) == armSingleDataSwapBits) {
 			bool byteWord = lutIndex & 0b0000'0100'0000;
 
-			disassembledOpcode << "SWP" << condtionCode << (byteWord ? "B " : " ");
+			disassembledOpcode << "SWP" << conditionCode << (byteWord ? "B " : " ");
 			disassembledOpcode << getRegName((opcode >> 12) & 0xF) << ", " << getRegName(opcode & 0xF) << ", [" << getRegName((opcode >> 16) & 0xF) << "]";
 
 			return disassembledOpcode.str();
 		} else if ((lutIndex & armPsrLoadMask) == armPsrLoadBits) {
 			bool targetPSR = lutIndex & 0b0000'0100'0000;
 
-			disassembledOpcode << "MRS" << condtionCode << " ";
+			disassembledOpcode << "MRS" << conditionCode << " ";
 			disassembledOpcode << getRegName((opcode >> 12) & 0xF) << ", " << (targetPSR ? "SPSR" : "CPSR");
 
 			return disassembledOpcode.str();
 		} else if ((lutIndex & armPsrStoreRegMask) == armPsrStoreRegBits) {
 			bool targetPSR = lutIndex & 0b0000'0100'0000;
 
-			disassembledOpcode << "MSR" << condtionCode << " ";
+			disassembledOpcode << "MSR" << conditionCode << " ";
 			disassembledOpcode << (targetPSR ? "SPSR_" : "CPSR_");
 
 			disassembledOpcode << ((opcode & (1 << 19)) ? "f" : "")
@@ -454,7 +454,7 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 		} else if ((lutIndex & armPsrStoreImmediateMask) == armPsrStoreImmediateBits) {
 			bool targetPSR = lutIndex & 0b0000'0100'0000;
 
-			disassembledOpcode << "MSR" << condtionCode << " ";
+			disassembledOpcode << "MSR" << conditionCode << " ";
 			disassembledOpcode << (targetPSR ? "SPSR_" : "CPSR_");
 
 			disassembledOpcode << ((opcode & (1 << 19)) ? "f" : "")
@@ -470,7 +470,7 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 
 			return disassembledOpcode.str();
 		} else if ((lutIndex & armBranchExchangeMask) == armBranchExchangeBits) {
-			disassembledOpcode << "BX" << condtionCode << " " << getRegName(opcode & 0xF);
+			disassembledOpcode << "BX" << conditionCode << " " << getRegName(opcode & 0xF);
 
 			return disassembledOpcode.str();
 		} else if ((lutIndex & armHalfwordDataTransferMask) == armHalfwordDataTransferBits) {
@@ -481,7 +481,7 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 			bool loadStore = lutIndex & 0b0000'0001'0000;
 			int shBits = (lutIndex & 0b0000'0000'0110) >> 1;
 
-			disassembledOpcode << (loadStore ? "LDR" : "STR") << condtionCode;
+			disassembledOpcode << (loadStore ? "LDR" : "STR") << conditionCode;
 			switch (shBits) {
 			case 0:
 				return "Undefined";
@@ -548,7 +548,7 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 
 			if ((printRd && sBit) || options.alwaysShowSBit)
 				disassembledOpcode << "S";
-			disassembledOpcode << condtionCode << " ";
+			disassembledOpcode << conditionCode << " ";
 			if (printRd)
 				disassembledOpcode << "r" << (((0xF << 12) & opcode) >> 12) << ", ";
 			if (printRn)
@@ -566,7 +566,7 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 			bool writeBack = lutIndex & 0b0000'0010'0000;
 			bool loadStore = lutIndex & 0b0000'0001'0000;
 
-			disassembledOpcode << (loadStore ? "LDR" : "STR") << condtionCode << (byteWord ? "B " : " ");
+			disassembledOpcode << (loadStore ? "LDR" : "STR") << conditionCode << (byteWord ? "B " : " ");
 
 			disassembledOpcode << getRegName((opcode >> 12) & 0xF) << ", [" << getRegName((opcode >> 16) & 0xF);
 
@@ -595,9 +595,9 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 			auto baseRegister = (opcode >> 16) & 0xF;
 
 			if (options.simplifyPushPop && (baseRegister == 13) && ((loadStore && !prePostIndex && upDown) || (!loadStore && prePostIndex && !upDown)) && writeBack && !sBit) {
-				disassembledOpcode << (loadStore ? "POP" : "PUSH") << condtionCode << " {";
+				disassembledOpcode << (loadStore ? "POP" : "PUSH") << conditionCode << " {";
 			} else {
-				disassembledOpcode << (loadStore ? "LDM" : "STM") << condtionCode;
+				disassembledOpcode << (loadStore ? "LDM" : "STM") << conditionCode;
 
 				// Code based on Table 4-6: Addressing mode names
 				if (options.ldmStmStackSuffixes) {
@@ -659,7 +659,7 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 			} else {
 				disassembledOpcode << "B";
 			}
-			disassembledOpcode << condtionCode;
+			disassembledOpcode << conditionCode;
 
 			u32 jumpLocation = address + (((i32)((opcode & 0x00FFFFFF) << 8)) >> 6) + 8;
 			if (options.printAddressesHex) {
@@ -671,9 +671,9 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 			return disassembledOpcode.str();
 		} else if ((lutIndex & armSoftwareInterruptMask) == armSoftwareInterruptBits) {
 			if (options.printAddressesHex) {
-				disassembledOpcode << "SWI" << condtionCode << " #0x" << std::hex << (opcode & 0x00FFFFFF);
+				disassembledOpcode << "SWI" << conditionCode << " #0x" << std::hex << (opcode & 0x00FFFFFF);
 			} else {
-				disassembledOpcode << "SWI" << condtionCode << " #" << (opcode & 0x00FFFFFF);
+				disassembledOpcode << "SWI" << conditionCode << " #" << (opcode & 0x00FFFFFF);
 			}
 
 			return disassembledOpcode.str();
