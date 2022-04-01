@@ -802,7 +802,8 @@ void GameBoyAdvance::writeIO(u32 address, u8 value) {
 		cpu.testInterrupt();
 		break;
 	case 0x300: // POSTFLG
-		POSTFLG = (bool)(value & 1); // TODO: Is this writable outside BIOS?
+		if ((cpu.reg.R[15] <= 0x3FFF) && (!POSTFLG))
+			POSTFLG = (bool)(value & 1);
 		break;
 	case 0x301: // HALTCNT
 		if (cpu.reg.R[15] <= 0x3FFF) {
