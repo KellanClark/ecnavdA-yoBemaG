@@ -44,12 +44,13 @@ public:
 	void reset();
 
 	bool searchRomForString(char *pattern, size_t patternSize);
-	int loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_);
+	int loadBios(std::filesystem::path biosFilePath_);
+	int loadRom(std::filesystem::path romFilePath_);
 	void save();
 
 	u8 readDebug(u32 address);
 	template <typename T> T openBus(u32 address);
-	template <typename T> u32 read(u32 address, bool sequential);
+	template <typename T, bool rotate = true> u32 read(u32 address, bool sequential);
 	u8 readIO(u32 address);
 	void writeDebug(u32 address, u8 value, bool unrestricted);
 	template <typename T> void write(u32 address, T value, bool sequential);
@@ -88,7 +89,6 @@ public:
 	u16 KEYINPUT; // 0x4000130
 	u16 KEYCNT; // 0x4000132
 	bool POSTFLG; // 0x4000300
-
 
 	union {
 		struct {

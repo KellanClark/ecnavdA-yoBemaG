@@ -10,7 +10,7 @@
 GameBoyAdvance::GameBoyAdvance() : cpu(*this), apu(*this), dma(*this), ppu(*this), timer(*this) {
 	logFlash = false;
 
-	reset();
+	//reset();
 }
 
 GameBoyAdvance::~GameBoyAdvance() {
@@ -41,11 +41,11 @@ void GameBoyAdvance::reset() {
 	ws2SequentialCycles = 8;
 
 	systemEvents.reset();
-	cpu.reset();
 	apu.reset();
 	dma.reset();
 	ppu.reset();
 	timer.reset();
+	cpu.reset();
 }
 
 bool GameBoyAdvance::searchRomForString(char *pattern, size_t patternSize) {
@@ -62,8 +62,10 @@ bool GameBoyAdvance::searchRomForString(char *pattern, size_t patternSize) {
 	return false;
 }
 
-int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem::path biosFilePath_) {
-	cpu.running = false;
+int GameBoyAdvance::loadBios(std::filesystem::path biosFilePath_) {
+	if (biosFilePath_.empty()) {
+		return -1;
+	}
 
 	std::ifstream biosFileStream{biosFilePath_, std::ios::binary};
 	if (!biosFileStream.is_open()) {
@@ -78,6 +80,10 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	biosFileStream.close();
 	biosBuff.resize(0x4000);
 
+	return 0;
+}
+
+int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_) {
 	std::ifstream romFileStream{romFilePath_, std::ios::binary};
 	if (!romFileStream.is_open()) {
 		printf("Failed to open ROM file: %s\n", romFilePath_.c_str());
@@ -146,7 +152,6 @@ int GameBoyAdvance::loadRom(std::filesystem::path romFilePath_, std::filesystem:
 	saveFileStream.read(reinterpret_cast<char*>(sram.data()), sram.size());
 	saveFileStream.close();
 
-	cpu.running = true;
 	return 0;
 }
 
@@ -225,7 +230,7 @@ template u8 GameBoyAdvance::openBus<u8>(u32);
 template u16 GameBoyAdvance::openBus<u16>(u32);
 template u32 GameBoyAdvance::openBus<u32>(u32);
 
-template <typename T>
+template <typename T, bool rotate>
 u32 GameBoyAdvance::read(u32 address, bool sequential) {
 	int page = address >> 15;
 	u32 alignedAddress = address & ~(sizeof(T) - 1);
@@ -239,8 +244,15 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 	case toPage(0x0000000): // BIOS
 		systemEvents.tickScheduler(1);
 
-		if ((address <= 0x3FFF) && (cpu.reg.R[15] < 0x2000000)) {
-			std::memcpy(&val, (u8*)biosBuff.data() + alignedAddress, sizeof(T));
+		if ((address <= 0x3FFF) && (cpu.reg.R[15] <= 0x3FFF)) {
+			if (cpu.hleBios) {
+				// Intercept jumps to BIOS
+				if (!sequential && (address == (cpu.reg.R[15] - (cpu.reg.thumbMode ? 4 : 8)))) {
+					cpu.bios.processJump = true;
+				}
+			} else {
+				std::memcpy(&val, (u8*)biosBuff.data() + alignedAddress, sizeof(T));
+			}
 		}
 		break;
 	case toPage(0x2000000) ... toPage(0x3000000) - 1: // EWRAM
@@ -377,17 +389,20 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 		openBusValue = newOpenBus;
 	}
 
-	// Rotate misaligned loads
-	if ((sizeof(T) == 2) && (address & 1)) [[unlikely]]
-		val = (val >> 8) | (val << 24);
-	if ((sizeof(T) == 4) && (address & 3)) [[unlikely]]
-		val = (val << ((4 - (address & 3)) * 8)) | (val >> ((address & 3) * 8));
+	if constexpr (rotate) {
+		// Rotate misaligned loads
+		if ((sizeof(T) == 2) && (address & 1)) [[unlikely]]
+			val = (val >> 8) | (val << 24);
+		if ((sizeof(T) == 4) && (address & 3)) [[unlikely]]
+			val = (val << ((4 - (address & 3)) * 8)) | (val >> ((address & 3) * 8));
+	}
 
 	return val;
 }
 template u32 GameBoyAdvance::read<u8>(u32, bool);
 template u32 GameBoyAdvance::read<u16>(u32, bool);
 template u32 GameBoyAdvance::read<u32>(u32, bool);
+template u32 GameBoyAdvance::read<u32, false>(u32, bool);
 
 u8 GameBoyAdvance::readIO(u32 address) {
 	int offset = address & 0x7FFF;
@@ -436,7 +451,7 @@ u8 GameBoyAdvance::readIO(u32 address) {
 		return 0;
 	case 0x300:
 		return (u8)POSTFLG;
-	case 0x301: // TODO: Are these 0?
+	case 0x301:
 	case 0x302:
 	case 0x303:
 		return 0;
@@ -807,7 +822,11 @@ void GameBoyAdvance::writeIO(u32 address, u8 value) {
 		break;
 	case 0x301: // HALTCNT
 		if (cpu.reg.R[15] <= 0x3FFF) {
-			cpu.halted = (bool)(value >> 7);
+			if (value & 0x80) { // TODO: Are these mutally exclusive?
+				cpu.stopped = true;
+			} else {
+				cpu.halted = true;
+			}
 			cpu.testInterrupt();
 		}
 		break;

@@ -1,6 +1,6 @@
 
-#ifndef GBA_ARM7TDMI_HPP
-#define GBA_ARM7TDMI_HPP
+#ifndef ARM7TDMI_HPP
+#define ARM7TDMI_HPP
 
 #include <array>
 #include <sstream>
@@ -57,14 +57,13 @@ public:
 
 	/* Instruction Decoding/Executing */
 	bool processIrq;
-	int pipelineStage;
 	u32 pipelineOpcode1; // R15
 	u32 pipelineOpcode2; // R15 + 4
 	u32 pipelineOpcode3; // R15 + 8
 	bool nextFetchType;
-	bool incrementR15;
 
-	inline bool checkCondition(int condtionCode);
+	bool checkCondition(int condtionCode);
+	void serviceInterrupt();
 	void fetchOpcode();
 	void flushPipeline();
 	void unknownOpcodeArm(u32 opcode);
@@ -87,10 +86,10 @@ public:
 	void branchExchange(u32 opcode);
 	template <bool prePostIndex, bool upDown, bool immediateOffset, bool writeBack, bool loadStore, int shBits> void halfwordDataTransfer(u32 opcode);
 	template <bool immediateOffset, bool prePostIndex, bool upDown, bool byteWord, bool writeBack, bool loadStore> void singleDataTransfer(u32 opcode);
-	virtual void undefined(u32 opcode);
+	void undefined(u32 opcode);
 	template <bool prePostIndex, bool upDown, bool sBit, bool writeBack, bool loadStore> void blockDataTransfer(u32 opcode);
 	template <bool lBit> void branch(u32 opcode);
-	virtual void softwareInterrupt(u32 opcode);
+	void softwareInterrupt(u32 opcode);
 
 	template <int op, int shiftAmount> void thumbMoveShiftedReg(u16 opcode);							// 1
 	template <bool immediate, bool op, int offset> void thumbAddSubtract(u16 opcode);					// 2
@@ -108,7 +107,7 @@ public:
 	template <bool loadStore, bool pcLr> void thumbPushPopRegisters(u16 opcode);						// 14
 	template <bool loadStore, int baseReg> void thumbMultipleLoadStore(u16 opcode);						// 15
 	template <int condition> void thumbConditionalBranch(u16 opcode);									// 16
-	virtual void thumbSoftwareInterrupt(u16 opcode);															// 17
+	void thumbSoftwareInterrupt(u16 opcode);															// 17
 	void thumbUncondtionalBranch(u16 opcode);															// 18
 	template <bool lowHigh> void thumbLongBranchLink(u16 opcode);										// 19
 

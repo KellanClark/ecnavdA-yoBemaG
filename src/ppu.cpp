@@ -10,6 +10,8 @@
 #define convertColor(x) ((x) | 0x8000)
 
 GBAPPU::GBAPPU(GameBoyAdvance& bus_) : bus(bus_) {
+	frameCounter = 0;
+
 	reset();
 }
 
@@ -65,6 +67,7 @@ void GBAPPU::lineStart() {
 
 		bus.dma.onVBlank();
 	} else if (currentScanline == 228) { // Start of frame
+		++frameCounter;
 		currentScanline = 0;
 		vBlankFlag = false;
 

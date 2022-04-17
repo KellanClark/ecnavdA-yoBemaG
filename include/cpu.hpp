@@ -8,21 +8,24 @@
 
 #include "types.hpp"
 #include "arm7tdmi.hpp"
+#include "hlebios.hpp"
 
 class Scheduler;
 class GBACPU : public ARM7TDMI {
 public:
+	bool hleBios;
+	GBABIOS bios;
+
 	GBACPU(GameBoyAdvance& bus_);
 	void reset();
 	void run();
 
-	void softwareInterrupt(u32 opcode) override;
-	void thumbSoftwareInterrupt(u16 opcode) override;
-
+	bool uncapFps;
 	u16 IE;
 	u16 IF;
 	bool IME;
 	bool halted;
+	bool stopped;
 	enum irqType {
 		IRQ_VBLANK = 1 << 0,
 		IRQ_HBLANK = 1 << 1,
@@ -48,7 +51,10 @@ public:
 		STOP,
 		START,
 		RESET,
-		UPDATE_KEYINPUT
+		LOAD_BIOS,
+		LOAD_ROM,
+		UPDATE_KEYINPUT,
+		CLEAR_LOG
 	};
 	struct threadEvent {
 		threadEventType type;
@@ -60,6 +66,7 @@ public:
 	void processThreadEvents();
 	void addThreadEvent(threadEventType type);
 	void addThreadEvent(threadEventType type, u64 intArg);
+	void addThreadEvent(threadEventType type, void *ptrArg);
 	void addThreadEvent(threadEventType type, u64 intArg, void *ptrArg);
 
 	std::atomic<bool> running;

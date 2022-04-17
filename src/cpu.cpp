@@ -1,22 +1,27 @@
 
 #include "cpu.hpp"
+#include "fmt/core.h"
 #include "gba.hpp"
 #include "scheduler.hpp"
 #include "arm7tdmidisasm.hpp"
 #include "types.hpp"
 #include <cstdio>
 
-GBACPU::GBACPU(GameBoyAdvance& bus_) : ARM7TDMI(bus_) {
+GBACPU::GBACPU(GameBoyAdvance& bus_) : ARM7TDMI(bus_), bios(*this) {
+	hleBios = true;
+	bios.processJump = false;
 	traceInstructions = false;
 	logInterrupts = false;
-
-	reset();
+	uncapFps = false;
 }
 
-void GBACPU::reset() {
+void GBACPU::reset() { // Should only be run once rom is loaded and system is ready
 	IE = 0;
 	IF = 0;
 	IME = false;
+	halted = false;
+	stopped = false;
+	bios.processJump = false;
 
 	resetARM7TDMI();
 }
@@ -25,12 +30,17 @@ void GBACPU::run() { // Emulator thread is run from here
 	while (1) {
 		processThreadEvents();
 
-		while (running && !bus.apu.apuBlock) {
+		while (running && (!bus.apu.apuBlock || uncapFps) && !stopped) {
+			if (uncapFps)
+				processThreadEvents();
+
 			if (!halted) {
 				//printf("r0:0x%08X r1:0x%08X r2:0x%08X r3:0x%08X r4:0x%08X r5:0x%08X r6:0x%08X r7:0x%08X r8:0x%08X r9:0x%08X r10:0x%08X r11:0x%08X r12:0x%08X r13:0x%08X r14:0x%08X r15:0x%08X cpsr:0x%08X\n", reg.R[0], reg.R[1], reg.R[2], reg.R[3], reg.R[4], reg.R[5], reg.R[6], reg.R[7], reg.R[8], reg.R[9], reg.R[10], reg.R[11], reg.R[12], reg.R[13], reg.R[14], reg.R[15], reg.CPSR);
-				cycle();
 
-				if (traceInstructions && (pipelineStage == 3)) {
+				while (bios.processJump) [[unlikely]]
+					bios.jumpToBios();
+
+				if (traceInstructions) {
 					std::string disasm;
 					std::string logLine;
 					if (reg.thumbMode) {
@@ -42,28 +52,27 @@ void GBACPU::run() { // Emulator thread is run from here
 					}
 
 					if (logLine.compare(previousLogLine)) {
+						bus.log << fmt::format("r0:0x{:0>8X} r1:0x{:0>8X} r2:0x{:0>8X} r3:0x{:0>8X} r4:0x{:0>8X} r5:0x{:0>8X} r6:0x{:0>8X} r7:0x{:0>8X} r8:0x{:0>8X} r9:0x{:0>8X} r10:0x{:0>8X} r11:0x{:0>8X} r12:0x{:0>8X} r13:0x{:0>8X} r14:0x{:0>8X} r15:0x{:0>8X} cpsr:0x{:0>8X}\n", reg.R[0], reg.R[1], reg.R[2], reg.R[3], reg.R[4], reg.R[5], reg.R[6], reg.R[7], reg.R[8], reg.R[9], reg.R[10], reg.R[11], reg.R[12], reg.R[13], reg.R[14], reg.R[15], reg.CPSR);
 						bus.log << logLine;
 						previousLogLine = logLine;
 					}
 				}
+				cycle();
 			} else {
+				// Optimization for halts
+				systemEvents.currentTime = systemEvents.eventQueue.top().timeStamp;
 				systemEvents.tickScheduler(1);
 			}
 		}
 	}
 }
 
-void GBACPU::softwareInterrupt(u32 opcode) {
-	ARM7TDMI::softwareInterrupt(opcode);
-}
-
-void GBACPU::thumbSoftwareInterrupt(u16 opcode) {
-	ARM7TDMI::thumbSoftwareInterrupt(opcode);
-}
-
 void GBACPU::testInterrupt() {
 	if (halted && (IE & IF))
 		halted = false;
+	
+	if (stopped && (IE & IF))
+		stopped = false;
 
 	if (!reg.irqDisable && IME && (IE & IF))
 		processIrq = true;
@@ -118,8 +127,26 @@ void GBACPU::processThreadEvents() {
 		case RESET:
 			bus.reset();
 			break;
+		case LOAD_BIOS:
+			if (bus.loadBios(*(std::filesystem::path *)currentEvent.ptrArg)) {
+				printf("Defaulting to HLE BIOS\n");
+				bus.log << "Defaulting to HLE BIOS\n";
+
+				hleBios = true;
+			} else {
+				hleBios = false;
+			}
+			break;
+		case LOAD_ROM:
+			if (bus.loadRom(*(std::filesystem::path *)currentEvent.ptrArg)) {
+				threadQueue = {};
+			}
+			break;
 		case UPDATE_KEYINPUT:
 			bus.KEYINPUT = currentEvent.intArg & 0x3FF;
+			break;
+		case CLEAR_LOG:
+			bus.log.str("");
 			break;
 		default:
 			printf("Unknown thread event:  %d\n", currentEvent.type);
@@ -135,6 +162,10 @@ void GBACPU::addThreadEvent(threadEventType type) {
 
 void GBACPU::addThreadEvent(threadEventType type, u64 intArg) {
 	addThreadEvent(type, intArg, nullptr);
+}
+
+void GBACPU::addThreadEvent(threadEventType type, void *ptrArg) {
+	addThreadEvent(type, 0, ptrArg);
 }
 
 void GBACPU::addThreadEvent(threadEventType type, u64 intArg, void *ptrArg) {

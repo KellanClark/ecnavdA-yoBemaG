@@ -1,5 +1,5 @@
-#ifndef GBA_ARM7TDMI_DISASM_HPP
-#define GBA_ARM7TDMI_DISASM_HPP
+#ifndef ARM7TDMI_DISASM_HPP
+#define ARM7TDMI_DISASM_HPP
 
 #include <array>
 #include <sstream>

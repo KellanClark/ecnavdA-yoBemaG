@@ -1,5 +1,6 @@
 
 #include "arm7tdmi.hpp"
+#include "fmt/core.h"
 #include "gba.hpp"
 #include "scheduler.hpp"
 #include "types.hpp"
@@ -9,13 +10,11 @@
 #define iCycle(x) bus.internalCycle(x)
 
 ARM7TDMI::ARM7TDMI(GameBoyAdvance& bus_) : bus(bus_) {
-	resetARM7TDMI();
+	//resetARM7TDMI();
 }
 
 void ARM7TDMI::resetARM7TDMI() {
 	processIrq = false;
-
-	pipelineStage = 0;
 
 	reg.R[0] = 0x00000000;
 	reg.R[1] = 0x00000000;
@@ -46,26 +45,13 @@ void ARM7TDMI::resetARM7TDMI() {
 	reg.R13_irq = 0x3007FA0;
 	reg.R13_svc = 0x3007FE0;
 	reg.R13_fiq = reg.R13_abt = reg.R13_und = 0x3007FF0;
+
+	flushPipeline();
 }
 
 void ARM7TDMI::cycle() {
-	if (pipelineStage == 0)
-		flushPipeline();
 	if (processIrq) { // Service interrupt
-		processIrq = false;
-
-		//fetchOpcode();
-		//reg.R[15] -= reg.thumbMode ? 2 : 4;
-		bool oldThumb = reg.thumbMode;
-		bankRegisters(MODE_IRQ, true);
-		reg.R[14] = reg.R[15] - (oldThumb ? 0 : 4);
-
-		reg.irqDisable = true;
-		reg.fiqDisable = true;
-		reg.thumbMode = false;
-
-		reg.R[15] = 0x18;
-		flushPipeline();
+		serviceInterrupt();
 	} else {
 		if (reg.thumbMode) {
 			u16 lutIndex = pipelineOpcode3 >> 6;
@@ -102,12 +88,28 @@ inline bool ARM7TDMI::checkCondition(int condtionCode) {
 	case 0xB: return reg.flagN != reg.flagV;
 	case 0xC: return !reg.flagZ && (reg.flagN == reg.flagV);
 	case 0xD: return reg.flagZ || (reg.flagN != reg.flagV);
-	case 0xE: return true;
-	case 0xF: return true;
+	case 0xE: [[likely]] return true;
+	case 0xF: [[unlikely]] return true;
 	default:
 		unknownOpcodeArm(pipelineOpcode3, "Invalid condition");
 		return false;
 	}
+}
+void ARM7TDMI::serviceInterrupt() {
+	processIrq = false;
+
+	//fetchOpcode();
+	//reg.R[15] -= reg.thumbMode ? 2 : 4;
+	bool oldThumb = reg.thumbMode;
+	bankRegisters(MODE_IRQ, true);
+	reg.R[14] = reg.R[15] - (oldThumb ? 0 : 4);
+
+	reg.irqDisable = true;
+	reg.fiqDisable = true;
+	reg.thumbMode = false;
+
+	reg.R[15] = 0x18;
+	flushPipeline();
 }
 
 inline void ARM7TDMI::fetchOpcode() {
@@ -129,18 +131,14 @@ inline void ARM7TDMI::fetchOpcode() {
 }
 
 void ARM7TDMI::flushPipeline() {
-	pipelineStage = 3;
-
 	if (reg.thumbMode) {
-		reg.R[15] &= ~1;
-		pipelineOpcode3 = bus.read<u16>(reg.R[15], false);
-		pipelineOpcode2 = bus.read<u16>(reg.R[15] + 2, true);
-		reg.R[15] += 4;
+		reg.R[15] = (reg.R[15] & ~1) + 4;
+		pipelineOpcode3 = bus.read<u16>(reg.R[15] - 4, false);
+		pipelineOpcode2 = bus.read<u16>(reg.R[15] - 2, true);
 	} else {
-		reg.R[15] &= ~3;
-		pipelineOpcode3 = bus.read<u32>(reg.R[15], false);
-		pipelineOpcode2 = bus.read<u32>(reg.R[15] + 4, true);
-		reg.R[15] += 8;
+		reg.R[15] = (reg.R[15] & ~3) + 8;
+		pipelineOpcode3 = bus.read<u32>(reg.R[15] - 8, false);
+		pipelineOpcode2 = bus.read<u32>(reg.R[15] - 4, true);
 	}
 
 	nextFetchType = true;
@@ -423,6 +421,8 @@ void ARM7TDMI::bankRegisters(cpuMode newMode, bool enterMode) {
 		break;
 	default:
 		printf("Unknown mode 0x%02X\n", newMode);
+		bus.log << fmt::format("Unknown mode 0x{:0>2X}\n", newMode);
+		bus.cpu.running = false;
 		return;
 	}
 
@@ -930,7 +930,7 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 
 		if (emptyRegList) { // TODO: find timings for empty list
 			reg.R[baseRegister] = writeBackAddress;
-			reg.R[15] = bus.read<u32>(address, false);
+			reg.R[15] = bus.read<u32, false>(address, false);
 			flushPipeline();
 		} else {
 			for (int i = 0; i < 16; i++) {
@@ -940,8 +940,7 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 							reg.R[baseRegister] = writeBackAddress;
 					}
 
-					u32 val = bus.read<u32>(address, !firstReadWrite);
-					reg.R[i] = (val >> ((4 - (address & 3)) * 8)) | (val << ((address & 3) * 8)); // Undo rotate
+					reg.R[i] = bus.read<u32, false>(address, !firstReadWrite);;
 					address += 4;
 
 					if (firstReadWrite)
@@ -1504,8 +1503,7 @@ void ARM7TDMI::thumbPushPopRegisters(u16 opcode) {
 		} else {
 			for (int i = 0; i < 8; i++) {
 				if (opcode & (1 << i)) {
-					u32 val = bus.read<u32>(address, !firstReadWrite);
-					reg.R[i] = (val >> ((4 - (address & 3)) * 8)) | (val << ((address & 3) * 8)); // Undo rotate
+					reg.R[i] = bus.read<u32, false>(address, !firstReadWrite);
 					address += 4;
 
 					if (firstReadWrite)
@@ -1556,7 +1554,7 @@ void ARM7TDMI::thumbMultipleLoadStore(u16 opcode) {
 	if constexpr (loadStore) { // LDMIA!
 		if (emptyRegList) {
 			reg.R[baseReg] = writeBackAddress;
-			reg.R[15] = bus.read<u32>(address, true);
+			reg.R[15] = bus.read<u32, false>(address, true);
 			flushPipeline();
 		} else {
 			for (int i = 0; i < 8; i++) {
@@ -1564,8 +1562,7 @@ void ARM7TDMI::thumbMultipleLoadStore(u16 opcode) {
 					if (firstReadWrite)
 						reg.R[baseReg] = writeBackAddress;
 
-					u32 val = bus.read<u32>(address, !firstReadWrite);
-					reg.R[i] = (val >> ((4 - (address & 3)) * 8)) | (val << ((address & 3) * 8)); // Undo rotate
+					reg.R[i] = bus.read<u32, false>(address, !firstReadWrite);
 					address += 4;
 
 					if (firstReadWrite)

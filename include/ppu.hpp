@@ -35,6 +35,7 @@ public:
 	u8 readIO(u32 address);
 	void writeIO(u32 address, u8 value);
 
+	int frameCounter;
 	std::atomic<bool> updateScreen;
 	uint16_t framebuffer[160][240];
 

@@ -4,6 +4,7 @@
 #include <numeric>
 
 #include "SDL_audio.h"
+#include "SDL_timer.h"
 #include "arm7tdmidisasm.hpp"
 #include "imgui.h"
 #include "backends/imgui_impl_sdl.h"
@@ -25,6 +26,7 @@ std::filesystem::path argBiosFilePath;
 bool recordSound;
 bool argWavGiven;
 std::filesystem::path argWavFilePath;
+bool argUncapFps;
 
 constexpr auto cexprHash(const char *str, std::size_t v = 0) noexcept -> std::size_t {
 	return (*str == 0) ? v : 31 * cexprHash(str + 1) + *str;
@@ -86,7 +88,7 @@ void audioCallback(void *userdata, uint8_t *stream, int len);
 
 // Everything else
 std::atomic<bool> quit = false;
-int loadRom();
+void loadRom();
 
 int main(int argc, char *argv[]) {
 	// Parse arguments
@@ -95,6 +97,7 @@ int main(int argc, char *argv[]) {
 	argBiosFilePath = "";
 	recordSound = false;
 	argWavGiven = false;
+	argUncapFps = false;
 	for (int i = 1; i < argc; i++) {
 		switch (cexprHash(argv[i])) {
 		case cexprHash("--rom"):
@@ -122,6 +125,9 @@ int main(int argc, char *argv[]) {
 			argWavGiven = true;
 			argWavFilePath = argv[i];
 			break;
+		case cexprHash("--uncap-fps"):
+			argUncapFps = true;
+			break;
 		default:
 			if (i == 1) {
 				argRomGiven = true;
@@ -133,11 +139,8 @@ int main(int argc, char *argv[]) {
 			break;
 		}
 	}
-	if (argRomGiven && argBiosGiven) {
-		if (loadRom() == -1) {
-			return -1;
-		}
-	}
+	if (argRomGiven)
+		loadRom();
 	disassembler.defaultSettings();
 
 	// Setup SDL and OpenGL
@@ -199,11 +202,9 @@ int main(int argc, char *argv[]) {
 
 	NFD::Guard nfdGuard;
 
-	u32 emuThreadTicks = 0;
-	u32 emuThreadTicksLast = 0;
-	std::list<u32> emuThreadTicksBuff;
-	emuThreadTicksBuff.resize(60 * 5);
-	u32 emuThreadTicksBuffTotal = 0;
+	int renderThreadFps = 0;
+	int emuThreadFps = 0;
+	u32 lastFpsPoll = 0;
 	SDL_Event event;
 	while (!quit) {
 		while (SDL_PollEvent(&event)) {
@@ -246,14 +247,6 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (GBA.ppu.updateScreen) {
-			// Update FPS count
-			emuThreadTicksLast = emuThreadTicks;
-			emuThreadTicks = SDL_GetTicks();
-			emuThreadTicksBuffTotal -= emuThreadTicksBuff.back();
-			emuThreadTicksBuff.pop_back();
-			emuThreadTicksBuff.push_front(emuThreadTicks - emuThreadTicksLast);
-			emuThreadTicksBuffTotal += emuThreadTicksBuff.front();
-
 			glBindTexture(GL_TEXTURE_2D, lcdTexture);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB5_A1, 240, 160, 0, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, GBA.ppu.framebuffer);
 			GBA.ppu.updateScreen = false;
@@ -285,12 +278,19 @@ int main(int argc, char *argv[]) {
 		if (showPalette)
 			paletteWindow();
 
+		if ((SDL_GetTicks() - lastFpsPoll) >= 1000) {
+			lastFpsPoll = SDL_GetTicks();
+			renderThreadFps = (int)io.Framerate;
+			emuThreadFps = GBA.ppu.frameCounter;
+			GBA.ppu.frameCounter = 0;
+		}
+
 		// Console Screen
 		{
 			ImGui::Begin("Game Boy Advance Screen");
 
-			ImGui::Text("Rendering Thread:  %.1f FPS", io.Framerate);
-			ImGui::Text("Emulator Thread:   %.1f FPS", 1000.0/((float)emuThreadTicksBuffTotal / emuThreadTicksBuff.size()));
+			ImGui::Text("Rendering Thread:  %d FPS", renderThreadFps);
+			ImGui::Text("Emulator Thread:   %d FPS", emuThreadFps);
 			ImGui::Image((void*)(intptr_t)lcdTexture, ImVec2(240 * 3, 160 * 3));
 
 			ImGui::End();
@@ -305,7 +305,7 @@ int main(int argc, char *argv[]) {
 		SDL_GL_SwapWindow(window);
 	}
 
-	GBA.cpu.addThreadEvent(GBACPU::STOP, 0);
+	GBA.cpu.addThreadEvent(GBACPU::STOP, (int)0);
 	emuThread.detach();
 
 	// WAV file
@@ -366,13 +366,14 @@ void audioCallback(void *userdata, uint8_t *stream, int len) {
 	GBA.apu.sampleBufferMutex.unlock();
 }
 
-int loadRom() {
+void loadRom() {
+	GBA.cpu.addThreadEvent(GBACPU::STOP);
+	GBA.cpu.addThreadEvent(GBACPU::LOAD_BIOS, &argBiosFilePath);
+	GBA.cpu.addThreadEvent(GBACPU::LOAD_ROM, &argRomFilePath);
 	GBA.cpu.addThreadEvent(GBACPU::RESET);
+	GBA.cpu.addThreadEvent(GBACPU::START);
 
-	if (GBA.loadRom(argRomFilePath, argBiosFilePath))
-		return -1;
-
-	return 0;
+	GBA.cpu.uncapFps = argUncapFps;
 }
 
 void mainMenuBar() {
@@ -400,7 +401,7 @@ void mainMenuBar() {
 	if (ImGui::BeginMenu("Emulation")) {
 		if (GBA.cpu.running) {
 			if (ImGui::MenuItem("Pause"))
-				GBA.cpu.addThreadEvent(GBACPU::STOP, 0);
+				GBA.cpu.addThreadEvent(GBACPU::STOP, (int)0);
 		} else {
 			if (ImGui::MenuItem("Unpause"))
 				GBA.cpu.addThreadEvent(GBACPU::START);
@@ -475,7 +476,8 @@ void noBiosWindow() {
 	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5, 0.5));
 	ImGui::Begin("No BIOS Selected");
 
-	ImGui::Text("You have chosen a ROM, but no BIOS.\nWould you like to start now or wait until a BIOS is selected?");
+	ImGui::Text("You have chosen a ROM, but no BIOS.\nWould you like to start now using the HLE BIOS or wait until one is selected?");
+	ImGui::Text("Note: The HLE BIOS is very much a work in progress and likely will not work correctly.");
 
 	if (ImGui::Button("Wait"))
 		showNoBios = false;
@@ -496,7 +498,7 @@ void cpuDebugWindow() {
 	ImGui::SameLine();
 	if (GBA.cpu.running) {
 		if (ImGui::Button("Pause"))
-			GBA.cpu.addThreadEvent(GBACPU::STOP, 0);
+			GBA.cpu.addThreadEvent(GBACPU::STOP, (int)0);
 	} else {
 		if (ImGui::Button("Unpause"))
 			GBA.cpu.addThreadEvent(GBACPU::START);
@@ -562,7 +564,12 @@ void systemLogWindow() {
 	ImGui::SameLine();
 	ImGui::Checkbox("Log DMAs", (bool *)&GBA.dma.logDma);
 
+	ImGui::Spacing();
 	ImGui::Checkbox("Auto-scroll", &shouldAutoscroll);
+	ImGui::SameLine();
+	if (ImGui::Button("Clear Log")) {
+		GBA.cpu.addThreadEvent(GBACPU::CLEAR_LOG);
+	}
 	ImGui::SameLine();
 	if (ImGui::Button("Save Log")) {
 		std::ofstream logFileStream{"log", std::ios::trunc};

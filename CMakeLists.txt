@@ -37,6 +37,7 @@ add_executable(ecnavda-yobemag
 	src/gba.cpp
 	src/arm7tdmi.cpp
 	src/cpu.cpp
+	src/hlebios.cpp
 	src/apu.cpp
 	src/dma.cpp
 	src/ppu.cpp
