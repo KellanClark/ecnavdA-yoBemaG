@@ -31,6 +31,9 @@ void GBACPU::reset() { // Should only be run once rom is loaded and system is re
 
 void GBACPU::run() { // Emulator thread is run from here
 	while (1) {
+		while (!running)
+			processThreadEvents();
+
 		if (!halted) {
 			//printf("r0:0x%08X r1:0x%08X r2:0x%08X r3:0x%08X r4:0x%08X r5:0x%08X r6:0x%08X r7:0x%08X r8:0x%08X r9:0x%08X r10:0x%08X r11:0x%08X r12:0x%08X r13:0x%08X r14:0x%08X r15:0x%08X cpsr:0x%08X\n", reg.R[0], reg.R[1], reg.R[2], reg.R[3], reg.R[4], reg.R[5], reg.R[6], reg.R[7], reg.R[8], reg.R[9], reg.R[10], reg.R[11], reg.R[12], reg.R[13], reg.R[14], reg.R[15], reg.CPSR);
 

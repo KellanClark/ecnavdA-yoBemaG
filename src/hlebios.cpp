@@ -47,8 +47,8 @@ void GBABIOS::enterInterrupt() {
 }
 
 void GBABIOS::exitInterrupt() {
+	cpu.reg.R[15] = 0x3000000;
 	cpu.blockDataTransfer<false, true, false, true, true>(0xE8BD500F); // ldmia r13!, {r0-r3, r12, lr}
-	cpu.nextFetchType = true;
 	cpu.dataProcessing<true, 0x2, true>(0xE25EF004); // subs pc, lr, #4
 }
 

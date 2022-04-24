@@ -105,6 +105,17 @@ public:
 		};
 		u16 WAITCNT; // 0x4000204
 	};
+	union { // TODO: This is a stub
+		struct {
+			u32 biosSwap : 1;
+			u32 : 4;
+			u32 ewramEnable : 1;
+			u32 : 18;
+			u32 ewramWaitControl : 4;
+			u32 : 4;
+		};
+		u32 InternalMemoryControl; // 0x4xx0800
+	};
 	int sramCycles;
 	int ws0NonSequentialCycles;
 	int ws0SequentialCycles;
@@ -112,6 +123,7 @@ public:
 	int ws1SequentialCycles;
 	int ws2NonSequentialCycles;
 	int ws2SequentialCycles;
+	int ewramCycles;
 
 	std::vector<u8> biosBuff;
 	int romSize;
