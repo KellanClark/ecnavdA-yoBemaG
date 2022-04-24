@@ -27,6 +27,8 @@ Download the executable from Releases or compile:
 
 Run the executable named `ecnavda-yobemag`. If the first argument is not valid, it is treated as the ROM path.
 
+Files can also be selected from the "File" menu in the GUI.
+
 Arguments:
 * `--rom <file>`
 * `--bios <file>` Give path to the BIOS. If invalid or not specified, the emulator will default to an HLE implementation.
