@@ -29,4 +29,6 @@ Run the executable named `ecnavda-yobemag`. If the first argument is not valid, 
 
 Arguments:
 * `--rom <file>`
-* `--bios <file>` Give path to the BIOS. If invalid or not specified, the emulator will default to an HLE implementation
+* `--bios <file>` Give path to the BIOS. If invalid or not specified, the emulator will default to an HLE implementation.
+* `--record <file.wav>` Record all played audio samples to a WAV file.
+* `--uncap-fps` Tries to run the emulator at the maximum possible speed.
