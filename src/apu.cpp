@@ -172,7 +172,7 @@ void GBAAPU::sampleEvent(void *object) {
 }
 
 void GBAAPU::generateSample() {
-	bus.cpu.addEvent(16777216 / 32768, sampleEvent, this);
+	bus.cpu.addEvent(16777216 / 32768, sampleEvent, this, ((sampleBufferIndex + 4) >= sampleBuffer.size()));
 	if (apuBlock)
 		return;
 	sampleBufferMutex.lock();
@@ -240,7 +240,7 @@ void GBAAPU::generateSample() {
 		sampleBuffer[sampleBufferIndex++] = ((soundControl.biasLevel << 6) | (soundControl.biasLevel >> 4)) - 0x8000;
 	}
 
-	if (sampleBufferIndex == (sizeof(sampleBuffer) / sizeof(i16)))
+	if (sampleBufferIndex == sampleBuffer.size())
 		apuBlock = true;
 
 	sampleBufferMutex.unlock();

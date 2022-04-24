@@ -25,12 +25,13 @@ public:
 		u64 timeStamp;
 		void (*callback)(void*);
 		void *userData;
+		bool important;
 	};
 	struct eventSorter {
 		bool operator()(const Event &lhs, const Event &rhs);
 	};
 
-	void addEvent(u64 cycles, void (*function)(void*), void *pointer);
+	void addEvent(u64 cycles, void (*function)(void*), void *pointer, bool important = false);
 	void tickScheduler(int cycles);
 
 	u64 currentTime;

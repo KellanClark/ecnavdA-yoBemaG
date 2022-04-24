@@ -4,6 +4,7 @@
 
 #include "types.hpp"
 #include <array>
+#include <cstddef>
 #include <queue>
 #include <atomic>
 #include <mutex>
@@ -29,7 +30,7 @@ public:
 	void writeIO(u32 address, u8 value);
 
 	std::mutex sampleBufferMutex;
-	std::atomic<int> sampleBufferIndex;
+	std::atomic<size_t> sampleBufferIndex;
 	std::array<i16, 2048> sampleBuffer;
 	bool apuBlock;
 
