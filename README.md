@@ -1,5 +1,5 @@
 # ecnavdA-yoBemaG
-A WIP Game Boy Advance emulator.
+A WIP Game Boy Advance emulator.tmp
 
 ## Major missing features
 * Proper transparency and alpha blending
