@@ -22,7 +22,6 @@
 #include <fmt/core.h>
 
 #include "types.hpp"
-#include "scheduler.hpp"
 #include "cpu.hpp"
 #include "apu.hpp"
 #include "dma.hpp"

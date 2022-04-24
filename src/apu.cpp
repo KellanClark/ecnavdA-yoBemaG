@@ -1,6 +1,5 @@
 
 #include "apu.hpp"
-#include "scheduler.hpp"
 #include "gba.hpp"
 #include <cstdio>
 #include <cstring>
@@ -36,8 +35,8 @@ void GBAAPU::reset() {
 	channelB.fifo = {};
 	channelB.currentSample = 0;
 
-	systemEvents.addEvent(16777216 / 32768, sampleEvent, this);
-	systemEvents.addEvent(8192 * 4, frameSequencerEvent, this);
+	bus.cpu.addEvent(16777216 / 32768, sampleEvent, this);
+	bus.cpu.addEvent(8192 * 4, frameSequencerEvent, this);
 	sampleBufferIndex = 0;
 	apuBlock = false;
 }
@@ -165,7 +164,7 @@ void GBAAPU::tickFrameSequencer() {
 		}
 	}
 
-	systemEvents.addEvent(8192 * 4, frameSequencerEvent, this);
+	bus.cpu.addEvent(8192 * 4, frameSequencerEvent, this);
 }
 
 void GBAAPU::sampleEvent(void *object) {
@@ -173,7 +172,7 @@ void GBAAPU::sampleEvent(void *object) {
 }
 
 void GBAAPU::generateSample() {
-	systemEvents.addEvent(16777216 / 32768, sampleEvent, this);
+	bus.cpu.addEvent(16777216 / 32768, sampleEvent, this);
 	if (apuBlock)
 		return;
 	sampleBufferMutex.lock();

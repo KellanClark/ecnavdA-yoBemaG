@@ -1,7 +1,6 @@
 
 #include "dma.hpp"
 #include "fmt/core.h"
-#include "scheduler.hpp"
 #include "types.hpp"
 #include "gba.hpp"
 #include <cstdio>
@@ -371,7 +370,7 @@ void GBADMA::writeIO(u32 address, u8 value) {
 			if (internalDMA0CNT.timing == 0) {
 				dma0Queued = true;
 				//checkDma();
-				systemEvents.addEvent(2, dmaCheckEvent, this); // TODO: Check how long this is and when it happens
+				bus.cpu.addEvent(2, dmaCheckEvent, this); // TODO: Check how long this is and when it happens
 			}
 		}
 		break;
@@ -420,7 +419,7 @@ void GBADMA::writeIO(u32 address, u8 value) {
 			if (internalDMA1CNT.timing == 0) {
 				dma1Queued = true;
 				//checkDma();
-				systemEvents.addEvent(2, dmaCheckEvent, this);
+				bus.cpu.addEvent(2, dmaCheckEvent, this);
 			}
 		}
 		break;
@@ -469,7 +468,7 @@ void GBADMA::writeIO(u32 address, u8 value) {
 			if (internalDMA2CNT.timing == 0) {
 				dma2Queued = true;
 				//checkDma();
-				systemEvents.addEvent(2, dmaCheckEvent, this);
+				bus.cpu.addEvent(2, dmaCheckEvent, this);
 			}
 		}
 		break;
@@ -518,7 +517,7 @@ void GBADMA::writeIO(u32 address, u8 value) {
 			if (internalDMA3CNT.timing == 0) {
 				dma3Queued = true;
 				//checkDma();
-				systemEvents.addEvent(2, dmaCheckEvent, this);
+				bus.cpu.addEvent(2, dmaCheckEvent, this);
 			}
 		}
 		break;

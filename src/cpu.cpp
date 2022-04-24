@@ -2,7 +2,7 @@
 #include "cpu.hpp"
 #include "fmt/core.h"
 #include "gba.hpp"
-#include "scheduler.hpp"
+#include "hlebios.hpp"
 #include "arm7tdmidisasm.hpp"
 #include "types.hpp"
 #include <cstdio>
@@ -13,6 +13,9 @@ GBACPU::GBACPU(GameBoyAdvance& bus_) : ARM7TDMI(bus_), bios(*this) {
 	traceInstructions = false;
 	logInterrupts = false;
 	uncapFps = false;
+
+	currentTime = 0;
+	eventQueue = {};
 }
 
 void GBACPU::reset() { // Should only be run once rom is loaded and system is ready
@@ -60,13 +63,35 @@ void GBACPU::run() { // Emulator thread is run from here
 				cycle();
 			} else {
 				// Optimization for halts
-				systemEvents.currentTime = systemEvents.eventQueue.top().timeStamp;
-				systemEvents.tickScheduler(1);
+				currentTime = eventQueue.top().timeStamp;
+				tickScheduler(1);
 			}
 		}
 	}
 }
 
+// Scheduler
+bool GBACPU::eventSorter::operator()(const Event &lhs, const Event &rhs) {
+	return lhs.timeStamp > rhs.timeStamp;
+}
+
+void GBACPU::addEvent(u64 cycles, void (*function)(void*), void *pointer) {
+	eventQueue.push(Event{currentTime + cycles, function, pointer});
+}
+
+void GBACPU::tickScheduler(int cycles) {
+	for (int i = 0; i < cycles; i++) {
+		while (currentTime >= eventQueue.top().timeStamp) {
+			auto callback = eventQueue.top().callback;
+			auto userData = eventQueue.top().userData;
+			eventQueue.pop();
+			(*callback)(userData);
+		}
+		++currentTime;
+	}
+}
+
+// Interrupts
 void GBACPU::testInterrupt() {
 	if (halted && (IE & IF))
 		halted = false;
@@ -107,10 +132,7 @@ void GBACPU::requestInterrupt(irqType bit) {
 	testInterrupt();
 }
 
-void GBACPU::stopEvent(void *object) {
-	static_cast<GBACPU *>(object)->running = false;
-}
-
+// Thread queue
 void GBACPU::processThreadEvents() {
 	threadQueueMutex.lock();
 	while (!threadQueue.empty()) {
@@ -122,7 +144,7 @@ void GBACPU::processThreadEvents() {
 			running = true;
 			break;
 		case STOP:
-			systemEvents.addEvent(currentEvent.intArg, stopEvent, this);
+			addEvent(currentEvent.intArg, stopEvent, this);
 			break;
 		case RESET:
 			bus.reset();
@@ -172,4 +194,8 @@ void GBACPU::addThreadEvent(threadEventType type, u64 intArg, void *ptrArg) {
 	threadQueueMutex.lock();
 	threadQueue.push(GBACPU::threadEvent{type, intArg, ptrArg});
 	threadQueueMutex.unlock();
+}
+
+void GBACPU::stopEvent(void *object) {
+	static_cast<GBACPU *>(object)->running = false;
 }

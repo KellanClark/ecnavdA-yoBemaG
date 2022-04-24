@@ -1,6 +1,5 @@
 
 #include "fmt/core.h"
-#include "scheduler.hpp"
 #include "types.hpp"
 #include "hlebios.hpp"
 #include "cpu.hpp"
@@ -37,12 +36,12 @@ void GBABIOS::reset() { // TODO: look into actual boot sequence
 }
 
 void GBABIOS::enterInterrupt() {
-	systemEvents.tickScheduler(3);
+	cpu.tickScheduler(3);
 	cpu.reg.R[15] = 0x128;
 	cpu.blockDataTransfer<true, false, false, true, false>(0xE92D500F); // stmdb r13!, {r0-r3, r12, lr}
 	cpu.reg.R[0] = 0x4000000; // mov r0, #0x4000000
 	cpu.reg.R[14] = 0x138; // add lr, pc, #0
-	systemEvents.tickScheduler(2);
+	cpu.tickScheduler(2);
 	cpu.nextFetchType = true;
 	cpu.singleDataTransfer<false, true, false, false, false, true>(0xE510F004); // ldr pc, [r0, #-4]
 }
@@ -77,7 +76,7 @@ void GBABIOS::enterSwi() {
 	cpu.bus.write(cpu.reg.R[13] - 4, cpu.reg.R[14], true);
 	cpu.reg.R[13] -= 8;
 	cpu.reg.R[14] = 0x0170; // adr lr, swi_complete
-	systemEvents.tickScheduler(14);
+	cpu.tickScheduler(14);
 
 	u32 arg0 = out0 = cpu.reg.R[0];
 	u32 arg1 = out1 = cpu.reg.R[1];
@@ -144,7 +143,7 @@ void GBABIOS::exitSwi() {
 	cpu.reg.R[15] = cpu.reg.R[14];
 	cpu.leaveMode();
 	cpu.flushPipeline();
-	systemEvents.tickScheduler(10);
+	cpu.tickScheduler(10);
 
 	cpu.bus.biosOpenBusValue = 0xE3A02004;
 }
@@ -187,7 +186,7 @@ void GBABIOS::SoftReset() { // 0x00
 	cpu.reg.R[14] = multiboot ? 0x2000000 : 0x8000000;
 	cpu.reg.CPSR = 0x1F;
 	// bx lr
-	systemEvents.tickScheduler(1);
+	cpu.tickScheduler(1);
 	cpu.reg.R[15] = cpu.reg.R[14];
 	cpu.flushPipeline();
 	cpu.bus.biosOpenBusValue = 0xE129F000;
@@ -263,29 +262,29 @@ void GBABIOS::RegisterRamReset(u32 flags) { // 0x01
 void GBABIOS::Halt() { // 0x02
 	cpu.reg.R[2] = 0;
 	cpu.reg.R[12] = 0x4000000;
-	systemEvents.tickScheduler(6);
+	cpu.tickScheduler(6);
 
 	cpu.bus.write<u8>(0x4000301, 0, false); // HALTCNT
 	while (!cpu.halted) {
-		systemEvents.currentTime = systemEvents.eventQueue.top().timeStamp;
-		systemEvents.tickScheduler(1);
+		cpu.currentTime = cpu.eventQueue.top().timeStamp;
+		cpu.tickScheduler(1);
 	}
 }
 
 void GBABIOS::Stop() { // 0x03
 	cpu.reg.R[2] = 0x80;
 	cpu.reg.R[12] = 0x4000000;
-	systemEvents.tickScheduler(3);
+	cpu.tickScheduler(3);
 
 	cpu.bus.write<u8>(0x4000301, 0x80, false); // HALTCNT
 	while (!cpu.stopped) {
-		systemEvents.currentTime = systemEvents.eventQueue.top().timeStamp;
-		systemEvents.tickScheduler(1);
+		cpu.currentTime = cpu.eventQueue.top().timeStamp;
+		cpu.tickScheduler(1);
 	}
 }
 
 void GBABIOS::exitHalt() {
-	systemEvents.tickScheduler(3);
+	cpu.tickScheduler(3);
 	exitSwi();
 }
 
@@ -307,8 +306,8 @@ void GBABIOS::IntrWait(bool discardOldFlags, u16 wantedFlags) { // 0x04
 
 	cpu.bus.write<u8>(0x4000301, 0, false); // strb r3, [r12, #0x301]
 	while (!cpu.processIrq) {
-		systemEvents.currentTime = systemEvents.eventQueue.top().timeStamp;
-		systemEvents.tickScheduler(1);
+		cpu.currentTime = cpu.eventQueue.top().timeStamp;
+		cpu.tickScheduler(1);
 	}
 	cpu.reg.R[15] = 0x0348 + 8;
 	return;
@@ -327,15 +326,15 @@ void GBABIOS::loopIntrWait() {
 		
 		cpu.bus.write<u8>(0x4000301, 0, false); // strb r3, [r12, #0x301]
 		while (!cpu.processIrq) {
-			systemEvents.currentTime = systemEvents.eventQueue.top().timeStamp;
-			systemEvents.tickScheduler(1);
+			cpu.currentTime = cpu.eventQueue.top().timeStamp;
+			cpu.tickScheduler(1);
 		}
 		cpu.reg.R[15] = 0x0348 + 8;
 	}
 }
 
 void GBABIOS::VBlankIntrWait() { // 0x05
-	systemEvents.tickScheduler(2);
+	cpu.tickScheduler(2);
 	IntrWait(true, 0x0001);
 }
 
@@ -358,7 +357,7 @@ void GBABIOS::Div(i32 numerator, i32 denominator) { // 0x06
 }
 
 void GBABIOS::DivArm(i32 denominator, i32 numerator) { // 0x07
-	systemEvents.tickScheduler(3);
+	cpu.tickScheduler(3);
 	Div(numerator, denominator);
 }
 
@@ -493,16 +492,16 @@ void GBABIOS::CpuSet(u32 srcAddress, u32 dstAddress, u32 lengthMode) { // 0x0B
 }
 
 void GBABIOS::CpuFastSet(u32 srcAddress, u32 dstAddress, u32 lengthMode) { // 0x0C
-	systemEvents.tickScheduler(37);
+	cpu.tickScheduler(37);
 
 	u32 size = (lengthMode << 11) >> 9;
 	if (size == 0)
 		return;
 	if (!((((size & ~0xFE000000) + srcAddress) | srcAddress) & 0xE000000)) {
-		systemEvents.tickScheduler(2);
+		cpu.tickScheduler(2);
 		return;
 	}
-	systemEvents.tickScheduler(9);
+	cpu.tickScheduler(9);
 
 	u32 endAddress = size + dstAddress;
 	if ((lengthMode >> 24) & 1) { // Fixed source address

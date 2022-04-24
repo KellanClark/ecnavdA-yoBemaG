@@ -1,7 +1,6 @@
 
 #include "gba.hpp"
 #include "arm7tdmi.hpp"
-#include "scheduler.hpp"
 #include <cstddef>
 #include <cstdio>
 
@@ -40,7 +39,9 @@ void GameBoyAdvance::reset() {
 	ws2NonSequentialCycles = 4;
 	ws2SequentialCycles = 8;
 
-	systemEvents.reset();
+	cpu.currentTime = 0;
+	cpu.eventQueue = {};
+
 	apu.reset();
 	dma.reset();
 	ppu.reset();
@@ -242,7 +243,7 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 	u32 val = openBus<T>(address);
 	switch (page) {
 	case toPage(0x0000000): // BIOS
-		systemEvents.tickScheduler(1);
+		cpu.tickScheduler(1);
 
 		if ((address <= 0x3FFF) && (cpu.reg.R[15] <= 0x3FFF)) {
 			if (cpu.hleBios) {
@@ -257,20 +258,20 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 		break;
 	case toPage(0x2000000) ... toPage(0x3000000) - 1: // EWRAM
 		if constexpr (sizeof(T) == 4) {
-			systemEvents.tickScheduler(6);
+			cpu.tickScheduler(6);
 		} else {
-			systemEvents.tickScheduler(3);
+			cpu.tickScheduler(3);
 		}
 
 		std::memcpy(&val, &ewram[0] + (alignedAddress & 0x3FFFF), sizeof(T));
 		break;
 	case toPage(0x3000000) ... toPage(0x4000000) - 1: // IWRAM
-		systemEvents.tickScheduler(1);
+		cpu.tickScheduler(1);
 
 		std::memcpy(&val, &iwram[0] + (alignedAddress & 0x7FFF), sizeof(T));
 		break;
 	case toPage(0x4000000): // I/O
-		systemEvents.tickScheduler(1);
+		cpu.tickScheduler(1);
 
 		// Split everything into u8
 		if (sizeof(T) == 4) {
@@ -289,18 +290,18 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 		break;
 	case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
 		if constexpr (sizeof(T) == 4) {
-			systemEvents.tickScheduler(2);
+			cpu.tickScheduler(2);
 		} else {
-			systemEvents.tickScheduler(1);
+			cpu.tickScheduler(1);
 		}
 
 		std::memcpy(&val, &ppu.paletteRam[0] + (alignedAddress & 0x3FF), sizeof(T));
 		break;
 	case toPage(0x6000000) ... toPage(0x7000000) - 1: // VRAM
 		if constexpr (sizeof(T) == 4) {
-			systemEvents.tickScheduler(2);
+			cpu.tickScheduler(2);
 		} else {
-			systemEvents.tickScheduler(1);
+			cpu.tickScheduler(1);
 		}
 
 		offset = alignedAddress & 0x1FFFF;
@@ -309,27 +310,27 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 		std::memcpy(&val, &ppu.vram[0] + offset, sizeof(T));
 		break;
 	case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
-		systemEvents.tickScheduler(1);
+		cpu.tickScheduler(1);
 
 		std::memcpy(&val, &ppu.oam[0] + (alignedAddress & 0x3FF), sizeof(T));
 		break;
 	case toPage(0x8000000) ... toPage(0xA000000) - 1: // ROM (Waitstate 0)
-		systemEvents.tickScheduler((sequential ? ws0SequentialCycles : ws0NonSequentialCycles) + ((sizeof(T) == 4) ? (ws0SequentialCycles + 2) : 1));
+		cpu.tickScheduler((sequential ? ws0SequentialCycles : ws0NonSequentialCycles) + ((sizeof(T) == 4) ? (ws0SequentialCycles + 2) : 1));
 
 		std::memcpy(&val, (u8*)romBuff.data() + (alignedAddress & 0x1FFFFFF), sizeof(T));
 		break;
 	case toPage(0xA000000) ... toPage(0xC000000) - 1: // ROM (Waitstate 1)
-		systemEvents.tickScheduler((sequential ? ws1SequentialCycles : ws1NonSequentialCycles) + ((sizeof(T) == 4) ? (ws1SequentialCycles + 2) : 1));
+		cpu.tickScheduler((sequential ? ws1SequentialCycles : ws1NonSequentialCycles) + ((sizeof(T) == 4) ? (ws1SequentialCycles + 2) : 1));
 
 		std::memcpy(&val, (u8*)romBuff.data() + (alignedAddress & 0x1FFFFFF), sizeof(T));
 		break;
 	case toPage(0xC000000) ... toPage(0xE000000) - 1: // ROM (Waitstate 2)
-		systemEvents.tickScheduler((sequential ? ws2SequentialCycles : ws2NonSequentialCycles) + ((sizeof(T) == 4) ? (ws2SequentialCycles + 2) : 1));
+		cpu.tickScheduler((sequential ? ws2SequentialCycles : ws2NonSequentialCycles) + ((sizeof(T) == 4) ? (ws2SequentialCycles + 2) : 1));
 
 		std::memcpy(&val, (u8*)romBuff.data() + (alignedAddress & 0x1FFFFFF), sizeof(T));
 		break;
 	case toPage(0xE000000) ... toPage(0x10000000) - 1:
-		systemEvents.tickScheduler(1);
+		cpu.tickScheduler(1);
 
 		if (saveType == SRAM_32K) {
 			val = sram[address & 0x7FFF];
@@ -351,7 +352,7 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 		}
 		break;
 	default:
-		systemEvents.tickScheduler(1);
+		cpu.tickScheduler(1);
 		break;
 	}
 
@@ -588,20 +589,20 @@ void GameBoyAdvance::write(u32 address, T value, bool sequential) {
 	switch (page) {
 	case toPage(0x2000000) ... toPage(0x3000000) - 1: // EWRAM
 		if constexpr (sizeof(T) == 4) {
-			systemEvents.tickScheduler(6);
+			cpu.tickScheduler(6);
 		} else {
-			systemEvents.tickScheduler(3);
+			cpu.tickScheduler(3);
 		}
 
 		std::memcpy(&ewram[0] + (alignedAddress & 0x3FFFF), &value, sizeof(T));
 		break;
 	case toPage(0x3000000) ... toPage(0x4000000) - 1: // IWRAM
-		systemEvents.tickScheduler(1);
+		cpu.tickScheduler(1);
 
 		std::memcpy(&iwram[0] + (alignedAddress & 0x7FFF), &value, sizeof(T));
 		break;
 	case toPage(0x4000000): // I/O
-		systemEvents.tickScheduler(1);
+		cpu.tickScheduler(1);
 
 		if constexpr (sizeof(T) == 4) {
 			writeIO((address & ~3) | 0, (u8)value);
@@ -620,9 +621,9 @@ void GameBoyAdvance::write(u32 address, T value, bool sequential) {
 		break;
 	case toPage(0x5000000) ... toPage(0x6000000) - 1: // Palette RAM
 		if constexpr (sizeof(T) == 4) {
-			systemEvents.tickScheduler(2);
+			cpu.tickScheduler(2);
 		} else {
-			systemEvents.tickScheduler(1);
+			cpu.tickScheduler(1);
 		}
 
 		if constexpr (sizeof(T) == 1) {
@@ -634,9 +635,9 @@ void GameBoyAdvance::write(u32 address, T value, bool sequential) {
 		break;
 	case toPage(0x6000000) ... toPage(0x7000000) - 1: // VRAM
 		if constexpr (sizeof(T) == 4) {
-			systemEvents.tickScheduler(2);
+			cpu.tickScheduler(2);
 		} else {
-			systemEvents.tickScheduler(1);
+			cpu.tickScheduler(1);
 		}
 
 		offset = alignedAddress & 0x1FFFF;
@@ -652,23 +653,23 @@ void GameBoyAdvance::write(u32 address, T value, bool sequential) {
 		}
 		break;
 	case toPage(0x7000000) ... toPage(0x8000000) - 1: // OAM
-		systemEvents.tickScheduler(1);
+		cpu.tickScheduler(1);
 
 		if constexpr (sizeof(T) != 1) {
 			std::memcpy(&ppu.oam[0] + (alignedAddress & 0x3FF), &value, sizeof(T));
 		}
 		break;
 	case toPage(0x8000000) ... toPage(0xA000000) - 1: // ROM (Waitstate 0)
-		systemEvents.tickScheduler((sequential ? ws0SequentialCycles : ws0NonSequentialCycles) + ((sizeof(T) == 4) ? (ws0SequentialCycles + 2) : 1));
+		cpu.tickScheduler((sequential ? ws0SequentialCycles : ws0NonSequentialCycles) + ((sizeof(T) == 4) ? (ws0SequentialCycles + 2) : 1));
 		break;
 	case toPage(0xA000000) ... toPage(0xC000000) - 1: // ROM (Waitstate 1)
-		systemEvents.tickScheduler((sequential ? ws1SequentialCycles : ws1NonSequentialCycles) + ((sizeof(T) == 4) ? (ws1SequentialCycles + 2) : 1));
+		cpu.tickScheduler((sequential ? ws1SequentialCycles : ws1NonSequentialCycles) + ((sizeof(T) == 4) ? (ws1SequentialCycles + 2) : 1));
 		break;
 	case toPage(0xC000000) ... toPage(0xE000000) - 1: // ROM (Waitstate 2)
-		systemEvents.tickScheduler((sequential ? ws2SequentialCycles : ws2NonSequentialCycles) + ((sizeof(T) == 4) ? (ws2SequentialCycles + 2) : 1));
+		cpu.tickScheduler((sequential ? ws2SequentialCycles : ws2NonSequentialCycles) + ((sizeof(T) == 4) ? (ws2SequentialCycles + 2) : 1));
 		break;
 	case toPage(0xE000000) ... toPage(0x10000000) - 1: // SRAM/Flash
-		systemEvents.tickScheduler(1);
+		cpu.tickScheduler(1);
 
 		if (saveType == SRAM_32K) {
 			sram[address & 0x7FFF] = (u8)value;
@@ -745,7 +746,7 @@ void GameBoyAdvance::write(u32 address, T value, bool sequential) {
 		}
 		break;
 	default:
-		systemEvents.tickScheduler(1);
+		cpu.tickScheduler(1);
 		break;
 	}
 }
@@ -839,5 +840,5 @@ void GameBoyAdvance::writeIO(u32 address, u8 value) {
 
 void GameBoyAdvance::internalCycle(int cycles) {
 	forceNonSequential = true;
-	systemEvents.tickScheduler(cycles);
+	cpu.tickScheduler(cycles);
 }

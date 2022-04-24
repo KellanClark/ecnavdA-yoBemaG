@@ -1,7 +1,6 @@
 
 #include "ppu.hpp"
 #include "gba.hpp"
-#include "scheduler.hpp"
 #include "types.hpp"
 #include <cstdio>
 #include <locale>
@@ -45,8 +44,8 @@ void GBAPPU::reset() {
 	BLDCNT = BLDALPHA = BLDY = 0;
 	evaCoefficientFloat = evbCoefficientFloat = evyCoefficientFloat = 0;
 
-	systemEvents.addEvent(1232, lineStartEvent, this);
-	systemEvents.addEvent(960, hBlankEvent, this);
+	bus.cpu.addEvent(1232, lineStartEvent, this);
+	bus.cpu.addEvent(960, hBlankEvent, this);
 }
 
 void GBAPPU::lineStartEvent(void *object) {
@@ -54,7 +53,7 @@ void GBAPPU::lineStartEvent(void *object) {
 }
 
 void GBAPPU::lineStart() {
-	systemEvents.addEvent(1232, lineStartEvent, this);
+	bus.cpu.addEvent(1232, lineStartEvent, this);
 
 	hBlankFlag = false;
 	++currentScanline;
@@ -101,7 +100,7 @@ void GBAPPU::hBlankEvent(void *object) {
 }
 
 void GBAPPU::hBlank() {
-	systemEvents.addEvent(1232, hBlankEvent, this);
+	bus.cpu.addEvent(1232, hBlankEvent, this);
 
 	if (currentScanline < 160)
 		drawScanline();

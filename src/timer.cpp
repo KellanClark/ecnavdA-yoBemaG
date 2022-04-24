@@ -1,6 +1,5 @@
 
 #include "timer.hpp"
-#include "scheduler.hpp"
 #include "gba.hpp"
 #include <cstdio>
 
@@ -29,8 +28,8 @@ void GBATIMER::checkOverflow() {
 				bus.cpu.requestInterrupt(GBACPU::IRQ_TIMER0);
 
 			TIM0D = initialTIM0D;
-			tim0Timestamp = systemEvents.currentTime;
-			systemEvents.addEvent((((0x10000 - TIM0D) * prescalerMasks[tim0Frequency]) + (tim0Timestamp & ~(prescalerMasks[tim0Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
+			tim0Timestamp = bus.cpu.currentTime;
+			bus.cpu.addEvent((((0x10000 - TIM0D) * prescalerMasks[tim0Frequency]) + (tim0Timestamp & ~(prescalerMasks[tim0Frequency] - 1))) - bus.cpu.currentTime, &checkOverflowEvent, this);
 
 			bus.apu.onTimer(0);
 			previousOverflow = true;
@@ -44,9 +43,9 @@ void GBATIMER::checkOverflow() {
 				bus.cpu.requestInterrupt(GBACPU::IRQ_TIMER1);
 
 			TIM1D = initialTIM1D;
-			tim1Timestamp = systemEvents.currentTime;
-			//systemEvents.addEvent((0x10000 - TIM1D) * (tim1Frequency ? (16 << (2 * tim1Frequency)) : 1), &checkOverflowEvent, this);
-			systemEvents.addEvent((((0x10000 - TIM1D) * prescalerMasks[tim1Frequency]) + (tim1Timestamp & ~(prescalerMasks[tim1Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
+			tim1Timestamp = bus.cpu.currentTime;
+			//bus.cpu.addEvent((0x10000 - TIM1D) * (tim1Frequency ? (16 << (2 * tim1Frequency)) : 1), &checkOverflowEvent, this);
+			bus.cpu.addEvent((((0x10000 - TIM1D) * prescalerMasks[tim1Frequency]) + (tim1Timestamp & ~(prescalerMasks[tim1Frequency] - 1))) - bus.cpu.currentTime, &checkOverflowEvent, this);
 			bus.apu.onTimer(1);
 
 			previousOverflow = true;
@@ -68,9 +67,9 @@ void GBATIMER::checkOverflow() {
 				bus.cpu.requestInterrupt(GBACPU::IRQ_TIMER2);
 
 			TIM2D = initialTIM2D;
-			tim2Timestamp = systemEvents.currentTime;
-			//systemEvents.addEvent((0x10000 - TIM2D) * (tim2Frequency ? (16 << (2 * tim2Frequency)) : 1), &checkOverflowEvent, this);
-			systemEvents.addEvent((((0x10000 - TIM2D) * prescalerMasks[tim2Frequency]) + (tim2Timestamp & ~(prescalerMasks[tim2Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
+			tim2Timestamp = bus.cpu.currentTime;
+			//bus.cpu.addEvent((0x10000 - TIM2D) * (tim2Frequency ? (16 << (2 * tim2Frequency)) : 1), &checkOverflowEvent, this);
+			bus.cpu.addEvent((((0x10000 - TIM2D) * prescalerMasks[tim2Frequency]) + (tim2Timestamp & ~(prescalerMasks[tim2Frequency] - 1))) - bus.cpu.currentTime, &checkOverflowEvent, this);
 
 			previousOverflow = true;
 		} else if (tim2Cascade && previousOverflow) { // Cascade
@@ -90,9 +89,9 @@ void GBATIMER::checkOverflow() {
 				bus.cpu.requestInterrupt(GBACPU::IRQ_TIMER3);
 
 			TIM3D = initialTIM3D;
-			tim3Timestamp = systemEvents.currentTime;
-			//systemEvents.addEvent((0x10000 - TIM3D) * (tim3Frequency ? (16 << (2 * tim3Frequency)) : 1), &checkOverflowEvent, this);
-			systemEvents.addEvent((((0x10000 - TIM3D) * prescalerMasks[tim3Frequency]) + (tim3Timestamp & ~(prescalerMasks[tim3Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
+			tim3Timestamp = bus.cpu.currentTime;
+			//bus.cpu.addEvent((0x10000 - TIM3D) * (tim3Frequency ? (16 << (2 * tim3Frequency)) : 1), &checkOverflowEvent, this);
+			bus.cpu.addEvent((((0x10000 - TIM3D) * prescalerMasks[tim3Frequency]) + (tim3Timestamp & ~(prescalerMasks[tim3Frequency] - 1))) - bus.cpu.currentTime, &checkOverflowEvent, this);
 		} else if (tim3Cascade && previousOverflow) { // Cascade
 			if (++TIM3D == 0) { // Cascade Overflow
 				if (tim3Irq)
@@ -106,17 +105,17 @@ template <int timer>
 u64 GBATIMER::getDValue() {
 	switch (timer) {
 	case 0:
-		//return TIM0D + (tim0Enable * ((systemEvents.currentTime - tim0Timestamp) / (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1)));
-		return TIM0D + (tim0Enable * ((systemEvents.currentTime - (tim0Timestamp & ~(prescalerMasks[tim0Frequency] - 1))) / prescalerMasks[tim0Frequency]));
+		//return TIM0D + (tim0Enable * ((bus.cpu.currentTime - tim0Timestamp) / (tim0Frequency ? (16 << (2 * tim0Frequency)) : 1)));
+		return TIM0D + (tim0Enable * ((bus.cpu.currentTime - (tim0Timestamp & ~(prescalerMasks[tim0Frequency] - 1))) / prescalerMasks[tim0Frequency]));
 	case 1:
-		//return TIM1D + ((tim1Enable && !tim1Cascade) * ((systemEvents.currentTime - tim1Timestamp) / (tim1Frequency ? (16 << (2 * tim1Frequency)) : 1)));
-		return TIM1D + (tim1Enable * !tim1Cascade * ((systemEvents.currentTime - (tim1Timestamp & ~(prescalerMasks[tim1Frequency] - 1))) / prescalerMasks[tim1Frequency]));
+		//return TIM1D + ((tim1Enable && !tim1Cascade) * ((bus.cpu.currentTime - tim1Timestamp) / (tim1Frequency ? (16 << (2 * tim1Frequency)) : 1)));
+		return TIM1D + (tim1Enable * !tim1Cascade * ((bus.cpu.currentTime - (tim1Timestamp & ~(prescalerMasks[tim1Frequency] - 1))) / prescalerMasks[tim1Frequency]));
 	case 2:
-		//return TIM2D + ((tim2Enable && !tim2Cascade) * ((systemEvents.currentTime - tim2Timestamp) / (tim2Frequency ? (16 << (2 * tim2Frequency)) : 1)));
-		return TIM2D + (tim2Enable * !tim2Cascade * ((systemEvents.currentTime - (tim2Timestamp & ~(prescalerMasks[tim2Frequency] - 1))) / prescalerMasks[tim2Frequency]));
+		//return TIM2D + ((tim2Enable && !tim2Cascade) * ((bus.cpu.currentTime - tim2Timestamp) / (tim2Frequency ? (16 << (2 * tim2Frequency)) : 1)));
+		return TIM2D + (tim2Enable * !tim2Cascade * ((bus.cpu.currentTime - (tim2Timestamp & ~(prescalerMasks[tim2Frequency] - 1))) / prescalerMasks[tim2Frequency]));
 	case 3:
-		//return TIM3D + ((tim3Enable && !tim3Cascade) * ((systemEvents.currentTime - tim3Timestamp) / (tim3Frequency ? (16 << (2 * tim3Frequency)) : 1)));
-		return TIM3D + (tim3Enable * !tim3Cascade * ((systemEvents.currentTime - (tim3Timestamp & ~(prescalerMasks[tim3Frequency] - 1))) / prescalerMasks[tim3Frequency]));
+		//return TIM3D + ((tim3Enable && !tim3Cascade) * ((bus.cpu.currentTime - tim3Timestamp) / (tim3Frequency ? (16 << (2 * tim3Frequency)) : 1)));
+		return TIM3D + (tim3Enable * !tim3Cascade * ((bus.cpu.currentTime - (tim3Timestamp & ~(prescalerMasks[tim3Frequency] - 1))) / prescalerMasks[tim3Frequency]));
 	}
 }
 
@@ -170,8 +169,8 @@ void GBATIMER::writeIO(u32 address, u8 value) {
 	case 0x4000102:
 		if ((value & 0x80) && (!tim0Enable || ((value & 0x03) != tim0Frequency))) { // Enabling the timer or changing frequency
 			TIM0D = initialTIM0D;
-			tim0Timestamp = systemEvents.currentTime + 2;
-			systemEvents.addEvent((((0x10000 - TIM0D) * prescalerMasks[tim0Frequency]) + (tim0Timestamp & ~(prescalerMasks[tim0Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
+			tim0Timestamp = bus.cpu.currentTime + 2;
+			bus.cpu.addEvent((((0x10000 - TIM0D) * prescalerMasks[tim0Frequency]) + (tim0Timestamp & ~(prescalerMasks[tim0Frequency] - 1))) - bus.cpu.currentTime, &checkOverflowEvent, this);
 		}
 		if (!(value & 0x80) && tim0Enable) // Disabling the timer
 			TIM0D = getDValue<0>();
@@ -187,8 +186,8 @@ void GBATIMER::writeIO(u32 address, u8 value) {
 	case 0x4000106:
 		if ((value & 0x80) && (!tim1Enable || ((value & 0x03) != tim1Frequency))) { // Enabling the timer or changing frequency
 			TIM1D = initialTIM1D;
-			tim1Timestamp = systemEvents.currentTime + 2;
-			systemEvents.addEvent((((0x10000 - TIM1D) * prescalerMasks[tim1Frequency]) + (tim1Timestamp & ~(prescalerMasks[tim1Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
+			tim1Timestamp = bus.cpu.currentTime + 2;
+			bus.cpu.addEvent((((0x10000 - TIM1D) * prescalerMasks[tim1Frequency]) + (tim1Timestamp & ~(prescalerMasks[tim1Frequency] - 1))) - bus.cpu.currentTime, &checkOverflowEvent, this);
 		}
 		if (!(value & 0x80) && tim1Enable) // Disabling the timer
 			TIM1D = getDValue<1>();
@@ -204,8 +203,8 @@ void GBATIMER::writeIO(u32 address, u8 value) {
 	case 0x400010A:
 		if ((value & 0x80) && (!tim2Enable || ((value & 0x03) != tim2Frequency))) { // Enabling the timer or changing frequency
 			TIM2D = initialTIM2D;
-			tim2Timestamp = systemEvents.currentTime + 2;
-			systemEvents.addEvent((((0x10000 - TIM2D) * prescalerMasks[tim2Frequency]) + (tim2Timestamp & ~(prescalerMasks[tim2Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
+			tim2Timestamp = bus.cpu.currentTime + 2;
+			bus.cpu.addEvent((((0x10000 - TIM2D) * prescalerMasks[tim2Frequency]) + (tim2Timestamp & ~(prescalerMasks[tim2Frequency] - 1))) - bus.cpu.currentTime, &checkOverflowEvent, this);
 		}
 		if (!(value & 0x80) && tim2Enable) // Disabling the timer
 			TIM2D = getDValue<2>();
@@ -221,8 +220,8 @@ void GBATIMER::writeIO(u32 address, u8 value) {
 	case 0x400010E:
 		if ((value & 0x80) && (!tim3Enable || ((value & 0x03) != tim3Frequency))) { // Enabling the timer or changing frequency
 			TIM3D = initialTIM3D;
-			tim3Timestamp = systemEvents.currentTime + 2;
-			systemEvents.addEvent((((0x10000 - TIM3D) * prescalerMasks[tim3Frequency]) + (tim3Timestamp & ~(prescalerMasks[tim3Frequency] - 1))) - systemEvents.currentTime, &checkOverflowEvent, this);
+			tim3Timestamp = bus.cpu.currentTime + 2;
+			bus.cpu.addEvent((((0x10000 - TIM3D) * prescalerMasks[tim3Frequency]) + (tim3Timestamp & ~(prescalerMasks[tim3Frequency] - 1))) - bus.cpu.currentTime, &checkOverflowEvent, this);
 		}
 		if (!(value & 0x80) && tim3Enable) // Disabling the timer
 			TIM3D = getDValue<3>();

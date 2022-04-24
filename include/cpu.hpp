@@ -20,6 +20,23 @@ public:
 	void reset();
 	void run();
 
+	// Scheduler
+	struct Event {
+		u64 timeStamp;
+		void (*callback)(void*);
+		void *userData;
+	};
+	struct eventSorter {
+		bool operator()(const Event &lhs, const Event &rhs);
+	};
+
+	void addEvent(u64 cycles, void (*function)(void*), void *pointer);
+	void tickScheduler(int cycles);
+
+	u64 currentTime;
+	std::priority_queue<Event, std::vector<Event>, eventSorter> eventQueue;
+
+	// Interrupts
 	bool uncapFps;
 	u16 IE;
 	u16 IF;
@@ -45,8 +62,7 @@ public:
 	void testInterrupt();
 	void requestInterrupt(irqType bit);
 
-	static void stopEvent(void *object);
-
+	// Thread queue
 	enum threadEventType {
 		STOP,
 		START,
@@ -73,6 +89,8 @@ public:
 	bool traceInstructions;
 	bool logInterrupts;
 	std::string previousLogLine;
+
+	static void stopEvent(void *object);
 };
 
 #endif

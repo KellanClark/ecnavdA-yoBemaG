@@ -2,7 +2,6 @@
 #include "arm7tdmi.hpp"
 #include "fmt/core.h"
 #include "gba.hpp"
-#include "scheduler.hpp"
 #include "types.hpp"
 #include <bit>
 #include <cstdio>
@@ -217,7 +216,7 @@ void ARM7TDMI::unknownOpcodeArm(u32 opcode) {
 }
 
 void ARM7TDMI::unknownOpcodeArm(u32 opcode, std::string message) {
-	systemEvents.addEvent(1, bus.cpu.stopEvent, this);
+	bus.cpu.addEvent(1, bus.cpu.stopEvent, this);
 	bus.log << fmt::format("Unknown ARM opcode 0x{:0>8X} at address 0x{:0>7X}  Message: {}\n", opcode, reg.R[15] - 8, message.c_str());
 }
 
@@ -226,7 +225,7 @@ void ARM7TDMI::unknownOpcodeThumb(u16 opcode) {
 }
 
 void ARM7TDMI::unknownOpcodeThumb(u16 opcode, std::string message) {
-	systemEvents.addEvent(1, bus.cpu.stopEvent, this);
+	bus.cpu.addEvent(1, bus.cpu.stopEvent, this);
 	bus.log << fmt::format("Unknown THUMB opcode 0x{:0>4X} at address 0x{:0>7X}  Message: {}\n", opcode, reg.R[15] - 4, message.c_str());
 }
 
