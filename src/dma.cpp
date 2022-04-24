@@ -175,7 +175,7 @@ void GBADMA::doDma() {
 			if (*sourceAddress < 0x2000000) {
 				bus.write<u32>(*destinationAddress & ~3, *openBus, hasTransfered);
 			} else {
-				u32 data = bus.read<u32>(*sourceAddress & ~3, hasTransfered);
+				u32 data = bus.read<u32, false>(*sourceAddress & ~3, hasTransfered);
 				if (!hasTransfered && (*sourceAddress >= 0x8000000) && (*destinationAddress >= 0x8000000))
 					hasTransfered = true;
 				bus.write<u32>(*destinationAddress & ~3, data, hasTransfered);
@@ -201,7 +201,7 @@ void GBADMA::doDma() {
 			if (*sourceAddress < 0x2000000) {
 				bus.write<u16>(*destinationAddress & ~1, (u16)*openBus, hasTransfered);
 			} else {
-				u16 data = bus.read<u16>(*sourceAddress & ~1, hasTransfered);
+				u16 data = bus.read<u16, false>(*sourceAddress & ~1, hasTransfered);
 				if (!hasTransfered && (*sourceAddress >= 0x8000000) && (*destinationAddress >= 0x8000000))
 					hasTransfered = true;
 				bus.write<u16>(*destinationAddress & ~1, data, hasTransfered);

@@ -53,7 +53,7 @@ void GBABIOS::exitInterrupt() {
 }
 
 void GBABIOS::enterSwi() {
-	int functionNum = cpu.bus.read<u8>(cpu.reg.R[14] - 2, false);
+	int functionNum = cpu.bus.read<u8, false>(cpu.reg.R[14] - 2, false);
 	if (functionNum > 0xF)
 		return;
 
@@ -125,19 +125,19 @@ void GBABIOS::enterSwi() {
 
 void GBABIOS::exitSwi() {
 	// ldmia r13!, {r2, lr}
-	cpu.reg.R[2] = cpu.bus.read<u32, false>(cpu.reg.R[13], false);
-	cpu.reg.R[14] = cpu.bus.read<u32, false>(cpu.reg.R[13] + 4, true);
+	cpu.reg.R[2] = cpu.bus.read<u32, false, false>(cpu.reg.R[13], false);
+	cpu.reg.R[14] = cpu.bus.read<u32, false, false>(cpu.reg.R[13] + 4, true);
 	cpu.reg.R[13] += 8;
 	// mov r12, #0xd3; msr cpsr_fc, r12
 	cpu.bankRegisters(GBACPU::MODE_SUPERVISOR, false);
 	cpu.reg.CPSR = 0xD3;
 	// ldm sp!, {r11}; msr spsr_fc, r11
-	cpu.reg.SPSR_svc = cpu.bus.read<u32, false>(cpu.reg.R[13], false);
+	cpu.reg.SPSR_svc = cpu.bus.read<u32, false, false>(cpu.reg.R[13], false);
 	cpu.reg.R[13] += 4;
 	// ldmia r13!, {r11, r12, lr}
-	cpu.reg.R[11] = cpu.bus.read<u32, false>(cpu.reg.R[13], false);
-	cpu.reg.R[12] = cpu.bus.read<u32, false>(cpu.reg.R[13] + 4, true);
-	cpu.reg.R[14] = cpu.bus.read<u32, false>(cpu.reg.R[13] + 8, true);
+	cpu.reg.R[11] = cpu.bus.read<u32, false, false>(cpu.reg.R[13], false);
+	cpu.reg.R[12] = cpu.bus.read<u32, false, false>(cpu.reg.R[13] + 4, true);
+	cpu.reg.R[14] = cpu.bus.read<u32, false, false>(cpu.reg.R[13] + 8, true);
 	cpu.reg.R[13] += 12;
 	// movs pc, lr
 	cpu.reg.R[15] = cpu.reg.R[14];
@@ -168,7 +168,7 @@ const u16 sineTable[] = {
 };
 
 void GBABIOS::SoftReset() { // 0x00
-	u8 multiboot = cpu.bus.read<u8>(0x4000000 - 6, false);
+	u8 multiboot = cpu.bus.read<u8, false>(0x4000000 - 6, false);
 
 	// Reset and clear stack
 	cpu.reg.R13_svc = 0x03008000 - 0x20;
@@ -225,7 +225,7 @@ void GBABIOS::RegisterRamReset(u32 flags) { // 0x01
 		cpu.bus.write<u8>(out1 + 4, (u8)0x880E0000, false); // SOUNDCNT_X
 		cpu.bus.write<u8>(out1 + 4, (u8)out1, false); // SOUNDCNT_X
 		cpu.bus.write<u32>(out1, 0x880E0000, false); // SOUNDCNT_L/SOUNDCNT_H
-		cpu.bus.write<u16>(out1 + 8, cpu.bus.read<u16>(out1 + 8, false), false); // SOUNDBIAS(wtf) 
+		cpu.bus.write<u16>(out1 + 8, cpu.bus.read<u16, false>(out1 + 8, false), false); // SOUNDBIAS(wtf) 
 		out1 -= 0x10;
 		cpu.bus.write<u8>(out1, (u8)out1, false); // SOUND3CNT_L
 		CpuFastSet(cpu.reg.R[13], out1 += 0x20, 8 | 0x85000000); // Wave RAM
@@ -297,7 +297,7 @@ void GBABIOS::IntrWait(bool discardOldFlags, u16 wantedFlags) { // 0x04
 
 	if (discardOldFlags) { // cmp r0, #0; blne sub_0358
 		cpu.IME = false; // strb r3, [r12, #0x208]
-		u16 tmp2 = cpu.bus.read<u16>(0x4000000 - 8, false); // ldrh r2, [r12, #-8]
+		u16 tmp2 = cpu.bus.read<u16, false>(0x4000000 - 8, false); // ldrh r2, [r12, #-8]
 		if (wantedFlags & tmp2) { // ands r0, r1, r2
 			cpu.bus.write<u16>(0x4000000 - 8, tmp2 ^ (wantedFlags & tmp2), false); // eorne r2, r2, r0; strhne r2, [r12, #-8]
 		}
@@ -314,7 +314,7 @@ void GBABIOS::IntrWait(bool discardOldFlags, u16 wantedFlags) { // 0x04
 }
 
 void GBABIOS::loopIntrWait() {
-	u16 tmp2 = cpu.bus.read<u16>(0x4000000 - 8, false); // ldrh r2, [r12, #-8]
+	u16 tmp2 = cpu.bus.read<u16, false>(0x4000000 - 8, false); // ldrh r2, [r12, #-8]
 	if (cpu.reg.R[1] & tmp2) { // ands r0, r1, r2
 		cpu.bus.write<u16>(0x4000000 - 8, tmp2 ^ (cpu.reg.R[1] & tmp2), false); // eorne r2, r2, r0; strhne r2, [r12, #-8]
 		cpu.bus.write(0x4000208, cpu.reg.R[4], false); // strb r4, [r12, #0x208]
@@ -467,23 +467,25 @@ void GBABIOS::CpuSet(u32 srcAddress, u32 dstAddress, u32 lengthMode) { // 0x0B
 	if ((lengthMode >> 26) & 1) { // 32 bit
 		u32 endAddress = dstAddress + size;
 		if ((lengthMode >> 24) & 1) { // Fixed source address
-			u32 value = cpu.bus.read<u32, false>(srcAddress, false);
+			u32 value = cpu.bus.read<u32, false, false>(srcAddress, false);
 			srcAddress += 4;
+
 			for (; dstAddress < endAddress; dstAddress += 4)
 				cpu.bus.write<u32>(dstAddress, value, false);
 		} else {
 			for (; dstAddress < endAddress; srcAddress += 4, dstAddress += 4)
-				cpu.bus.write<u32>(dstAddress, cpu.bus.read<u32, false>(srcAddress, false), false);
+				cpu.bus.write<u32>(dstAddress, cpu.bus.read<u32, false, false>(srcAddress, false), false);
 		}
 	} else { // 16 bit
 		u32 offset = 0;
 		if ((lengthMode >> 24) & 1) { // Fixed source address
-			u16 value = cpu.bus.read<u16>(srcAddress, false);
+			u16 value = cpu.bus.read<u16, false>(srcAddress, false);
+
 			for (; offset < size; offset += 2)
 				cpu.bus.write<u16>(dstAddress + offset, value, false);
 		} else {
 			for (; offset < size; offset += 2)
-				cpu.bus.write<u16>(dstAddress + offset, cpu.bus.read<u16>(srcAddress + offset, false), false);
+				cpu.bus.write<u16>(dstAddress + offset, cpu.bus.read<u16, false>(srcAddress + offset, false), false);
 		}
 	}
 
@@ -505,7 +507,8 @@ void GBABIOS::CpuFastSet(u32 srcAddress, u32 dstAddress, u32 lengthMode) { // 0x
 
 	u32 endAddress = size + dstAddress;
 	if ((lengthMode >> 24) & 1) { // Fixed source address
-		u32 value = cpu.bus.read<u32>(srcAddress, false);
+		u32 value = cpu.bus.read<u32, false>(srcAddress, false);
+
 		for (; dstAddress < endAddress; dstAddress += 32) {
 			for (int i = 0; i < 32; i += 4)
 				cpu.bus.write<u32>(dstAddress + i, value, (bool)i);
@@ -514,12 +517,12 @@ void GBABIOS::CpuFastSet(u32 srcAddress, u32 dstAddress, u32 lengthMode) { // 0x
 		out3 = value;
 	} else {
 		for (; dstAddress < endAddress; srcAddress += 32, dstAddress += 32) {
-			cpu.reg.R[2] = cpu.bus.read<u32, false>(srcAddress, false);
+			cpu.reg.R[2] = cpu.bus.read<u32, false, false>(srcAddress, false);
 			cpu.bus.write<u32>(dstAddress, cpu.reg.R[2], false);
-			out3 = cpu.bus.read<u32, false>(srcAddress + 4, true);
+			out3 = cpu.bus.read<u32, false, false>(srcAddress + 4, true);
 			cpu.bus.write<u32>(dstAddress + 4, out3, true);
 			for (int i = 8; i < 32; i += 4)
-				cpu.bus.write<u32>(dstAddress + i, cpu.bus.read<u32, false>(srcAddress + i, true), true);
+				cpu.bus.write<u32>(dstAddress + i, cpu.bus.read<u32, false, false>(srcAddress + i, true), true);
 		}
 	}
 
@@ -533,19 +536,19 @@ void GBABIOS::GetBiosChecksum() { // 0x0D
 
 void GBABIOS::BgAffineSet(u32 srcAddress, u32 dstAddress, u32 count) { // 0xE
 	for (u32 i = 0; i < count; i++) {
-		u16 rotateAngle = cpu.bus.read<u16>(srcAddress + 16, false); // ldrh r3, [r0, #0x10]
+		u16 rotateAngle = cpu.bus.read<u16, false>(srcAddress + 16, false); // ldrh r3, [r0, #0x10]
 		rotateAngle >>= 8; // lsr r3, r3, #8
 		i16 cosine = sineTable[(rotateAngle + 0x40) & 0xFF]; // add r8, r3, #0x40; and r8, r8, #0xff; lsl r8, r8, #1; ldrsh r11, [r8, r12]
 		i16 sine = sineTable[rotateAngle]; // lsl r8, r3, #1; ldrsh r12, [r8, r12]
-		i16 scaleX = cpu.bus.read<u16>(srcAddress + 12, false); // ldrsh r9, [r0, #0xc]
-		i16 scaleY = cpu.bus.read<u16>(srcAddress + 14, false); // ldrsh r10, [r0, #0xe]
+		i16 scaleX = cpu.bus.read<u16, false>(srcAddress + 12, false); // ldrsh r9, [r0, #0xc]
+		i16 scaleY = cpu.bus.read<u16, false>(srcAddress + 14, false); // ldrsh r10, [r0, #0xe]
 		i16 pa = (cosine * scaleX) >> 0xE; // mul r8, r11, r9; asr r3, r8, #0xe
 		i16 pb = (sine * scaleX) >> 0xE; // mul r8, r12, r9; asr r4, r8, #0xe
 		i16 pc = (sine * scaleY) >> 0xE; // mul r8, r12, r10; asr r5, r8, #0xe
 		i16 pd = (cosine * scaleY) >> 0xE; // mul r8, r11, r10; asr r6, r8, #0xe
-		i32 originalCenterX = cpu.bus.read<u32>(srcAddress, false); // ldm r0, {r9, r10, r12}
-		i32 originalCenterY = cpu.bus.read<u32>(srcAddress + 4, false);
-		i32 displayCenter = cpu.bus.read<u32>(srcAddress + 8, false);
+		i32 originalCenterX = cpu.bus.read<u32, false>(srcAddress, false); // ldm r0, {r9, r10, r12}
+		i32 originalCenterY = cpu.bus.read<u32, false>(srcAddress + 4, false);
+		i32 displayCenter = cpu.bus.read<u32, false>(srcAddress + 8, false);
 		i16 displayCenterX = (displayCenter << 16) >> 16; // lsl r11, r12, #0x10; asr r11, r11, #0x10
 		i16 displayCenterY = displayCenter >> 16; // asr r12, r12, #0x10
 		i32 startX = (pb * displayCenterY) + ((pa * (0 - displayCenterX)) + originalCenterX); // rsb r8, r11, #0; mla r9, r3, r8, r9; mla r8, r4, r12, r9
@@ -567,12 +570,12 @@ void GBABIOS::BgAffineSet(u32 srcAddress, u32 dstAddress, u32 count) { // 0xE
 
 void GBABIOS::ObjAffineSet(u32 srcAddress, u32 dstAddress, u32 count, u32 offset) { // 0xF
 	for (u32 i = 0; i < count; i++) {
-		u16 rotateAngle = cpu.bus.read<u16>(srcAddress + 4, false); // ldrh r9, [r0, #4]
+		u16 rotateAngle = cpu.bus.read<u16, false>(srcAddress + 4, false); // ldrh r9, [r0, #4]
 		rotateAngle >>= 8; // lsr r9, r9, #8
 		i16 cosine = sineTable[(rotateAngle + 0x40) & 0xFF]; // add r8, r9, #0x40; and r8, r8, #0xff; lsl r8, r8, #1; ldrsh r11, [r8, r12]
 		i16 sine = sineTable[rotateAngle]; // lsl r8, r9, #1; ldrsh r12, [r8, r12]
-		i16 scaleX = cpu.bus.read<u16>(srcAddress, false); // ldrsh r9, [r0]
-		i16 scaleY = cpu.bus.read<u16>(srcAddress + 2, false); // ldrsh r10, [r0, #2]
+		i16 scaleX = cpu.bus.read<u16, false>(srcAddress, false); // ldrsh r9, [r0]
+		i16 scaleY = cpu.bus.read<u16, false>(srcAddress + 2, false); // ldrsh r10, [r0, #2]
 
 		i16 pa = (cosine * scaleX) >> 0xE; // mul r8, r11, r9; asr r8, r8, #0xe
 		cpu.bus.write<u16>(dstAddress, pa, false); // strh r8, [r1], r3

@@ -231,7 +231,7 @@ template u8 GameBoyAdvance::openBus<u8>(u32);
 template u16 GameBoyAdvance::openBus<u16>(u32);
 template u32 GameBoyAdvance::openBus<u32>(u32);
 
-template <typename T, bool rotate>
+template <typename T, bool code, bool rotate>
 u32 GameBoyAdvance::read(u32 address, bool sequential) {
 	int page = address >> 15;
 	u32 alignedAddress = address & ~(sizeof(T) - 1);
@@ -248,7 +248,7 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 		if ((address <= 0x3FFF) && (cpu.reg.R[15] <= 0x3FFF)) {
 			if (cpu.hleBios) {
 				// Intercept jumps to BIOS
-				if (!sequential && (address == (cpu.reg.R[15] - (cpu.reg.thumbMode ? 4 : 8)))) {
+				if (code) {
 					cpu.bios.processJump = true;
 				}
 			} else {
@@ -400,10 +400,12 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 
 	return val;
 }
-template u32 GameBoyAdvance::read<u8>(u32, bool);
-template u32 GameBoyAdvance::read<u16>(u32, bool);
-template u32 GameBoyAdvance::read<u32>(u32, bool);
+template u32 GameBoyAdvance::read<u8, false>(u32, bool);
+template u32 GameBoyAdvance::read<u16, true>(u32, bool);
+template u32 GameBoyAdvance::read<u16, false>(u32, bool);
+template u32 GameBoyAdvance::read<u32, true>(u32, bool);
 template u32 GameBoyAdvance::read<u32, false>(u32, bool);
+template u32 GameBoyAdvance::read<u32, false, false>(u32, bool);
 
 u8 GameBoyAdvance::readIO(u32 address) {
 	int offset = address & 0x7FFF;

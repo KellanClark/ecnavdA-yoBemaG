@@ -113,13 +113,13 @@ void ARM7TDMI::serviceInterrupt() {
 
 inline void ARM7TDMI::fetchOpcode() {
 	if (reg.thumbMode) {
-		pipelineOpcode1 = bus.read<u16>(reg.R[15], nextFetchType);
+		pipelineOpcode1 = bus.read<u16, true>(reg.R[15], nextFetchType);
 		pipelineOpcode3 = pipelineOpcode2;
 		pipelineOpcode2 = pipelineOpcode1;
 
 		reg.R[15] += 2;
 	} else {
-		pipelineOpcode1 = bus.read<u32>(reg.R[15], nextFetchType);
+		pipelineOpcode1 = bus.read<u32, true>(reg.R[15], nextFetchType);
 		pipelineOpcode3 = pipelineOpcode2;
 		pipelineOpcode2 = pipelineOpcode1;
 
@@ -132,12 +132,12 @@ inline void ARM7TDMI::fetchOpcode() {
 void ARM7TDMI::flushPipeline() {
 	if (reg.thumbMode) {
 		reg.R[15] = (reg.R[15] & ~1) + 4;
-		pipelineOpcode3 = bus.read<u16>(reg.R[15] - 4, false);
-		pipelineOpcode2 = bus.read<u16>(reg.R[15] - 2, true);
+		pipelineOpcode3 = bus.read<u16, true>(reg.R[15] - 4, false);
+		pipelineOpcode2 = bus.read<u16, true>(reg.R[15] - 2, true);
 	} else {
 		reg.R[15] = (reg.R[15] & ~3) + 8;
-		pipelineOpcode3 = bus.read<u32>(reg.R[15] - 8, false);
-		pipelineOpcode2 = bus.read<u32>(reg.R[15] - 4, true);
+		pipelineOpcode3 = bus.read<u32, true>(reg.R[15] - 8, false);
+		pipelineOpcode2 = bus.read<u32, true>(reg.R[15] - 4, true);
 	}
 
 	nextFetchType = true;
@@ -638,10 +638,10 @@ void ARM7TDMI::singleDataSwap(u32 opcode) {
 	fetchOpcode();
 
 	if constexpr (byteWord) {
-		result = bus.read<u8>(address, true);
+		result = bus.read<u8, false>(address, true);
 		bus.write<u8>(address, (u8)reg.R[sourceRegister], false);
 	} else {
-		result = bus.read<u32>(address, true);
+		result = bus.read<u32, false>(address, true);
 		bus.write<u32>(address, reg.R[sourceRegister], false);
 	}
 
@@ -781,11 +781,11 @@ void ARM7TDMI::halfwordDataTransfer(u32 opcode) {
 	u32 result = 0;
 	if constexpr (loadStore) {
 		if constexpr (shBits == 1) { // LDRH
-			result = bus.read<u16>(address, false);
+			result = bus.read<u16, false>(address, false);
 		} else if constexpr (shBits == 2) { // LDRSB
-			result = ((i32)((u32)bus.read<u8>(address, false) << 24) >> 24);
+			result = ((i32)((u32)bus.read<u8, false>(address, false) << 24) >> 24);
 		} else if constexpr (shBits == 3) { // LDRSH
-			result = bus.read<u16>(address, false);
+			result = bus.read<u16, false>(address, false);
 
 			if (address & 1) {
 				result = (i32)(result << 24) >> 24;
@@ -845,9 +845,9 @@ void ARM7TDMI::singleDataTransfer(u32 opcode) {
 	u32 result = 0;
 	if constexpr (loadStore) { // LDR
 		if constexpr (byteWord) {
-			result = bus.read<u8>(address, false);
+			result = bus.read<u8, false>(address, false);
 		} else {
-			result = bus.read<u32>(address, false);
+			result = bus.read<u32, false>(address, false);
 		}
 	} else { // STR
 		if constexpr (byteWord) {
@@ -929,7 +929,7 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 
 		if (emptyRegList) { // TODO: find timings for empty list
 			reg.R[baseRegister] = writeBackAddress;
-			reg.R[15] = bus.read<u32, false>(address, false);
+			reg.R[15] = bus.read<u32, false, false>(address, false);
 			flushPipeline();
 		} else {
 			for (int i = 0; i < 16; i++) {
@@ -939,7 +939,7 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 							reg.R[baseRegister] = writeBackAddress;
 					}
 
-					reg.R[i] = bus.read<u32, false>(address, !firstReadWrite);;
+					reg.R[i] = bus.read<u32, false, false>(address, !firstReadWrite);;
 					address += 4;
 
 					if (firstReadWrite)
@@ -1336,7 +1336,7 @@ void ARM7TDMI::thumbPcRelativeLoad(u16 opcode) {
 	u32 address = (reg.R[15] + ((opcode & 0xFF) << 2)) & ~3;
 	fetchOpcode();
 
-	reg.R[destinationReg] = bus.read<u32>(address, false);
+	reg.R[destinationReg] = bus.read<u32, false>(address, false);
 	iCycle(1);
 }
 
@@ -1346,13 +1346,14 @@ void ARM7TDMI::thumbLoadStoreRegOffset(u16 opcode) {
 	u32 address = reg.R[(opcode >> 3) & 7] + reg.R[offsetReg];
 	fetchOpcode();
 
-	u32 result;
 	if constexpr (loadStore) {
 		if constexpr (byteWord) { // LDRB
-			result = bus.read<u8>(address, false);
+			reg.R[srcDestRegister] = bus.read<u8, false>(address, false);
 		} else { // LDR
-			result = bus.read<u32>(address, false);
+			reg.R[srcDestRegister] = bus.read<u32, false>(address, false);
 		}
+
+		iCycle(1);
 	} else {
 		if constexpr (byteWord) { // STRB
 			bus.write<u8>(address, (u8)reg.R[srcDestRegister], false);
@@ -1361,11 +1362,6 @@ void ARM7TDMI::thumbLoadStoreRegOffset(u16 opcode) {
 		}
 
 		nextFetchType = false;
-	}
-
-	if constexpr (loadStore) {
-		reg.R[srcDestRegister] = result;
-		iCycle(1);
 	}
 }
 
@@ -1382,14 +1378,14 @@ void ARM7TDMI::thumbLoadStoreSext(u16 opcode) {
 		nextFetchType = false;
 		break;
 	case 1: // LDSB
-		result = bus.read<u8>(address, false);
+		result = bus.read<u8, false>(address, false);
 		result = (i32)(result << 24) >> 24;
 		break;
 	case 2: // LDRH
-		result = bus.read<u16>(address, false);
+		result = bus.read<u16, false>(address, false);
 		break;
 	case 3: // LDSH
-		result = bus.read<u16>(address, false);
+		result = bus.read<u16, false>(address, false);
 
 		if (address & 1) {
 			result = (i32)(result << 24) >> 24;
@@ -1413,9 +1409,9 @@ void ARM7TDMI::thumbLoadStoreImmediateOffset(u16 opcode) {
 
 	if constexpr (loadStore) {
 		if constexpr (byteWord) { // LDRB
-			reg.R[srcDestRegister] = bus.read<u8>(address, false);
+			reg.R[srcDestRegister] = bus.read<u8, false>(address, false);
 		} else { // LDR
-			reg.R[srcDestRegister] = bus.read<u32>(address, false);
+			reg.R[srcDestRegister] = bus.read<u32, false>(address, false);
 		}
 		iCycle(1);
 	} else {
@@ -1436,7 +1432,8 @@ void ARM7TDMI::thumbLoadStoreHalfword(u16 opcode) {
 	fetchOpcode();
 
 	if constexpr (loadStore) { // LDRH
-		reg.R[srcDestRegister] = bus.read<u16>(address, false);
+		reg.R[srcDestRegister] = bus.read<u16, false>(address, false);
+
 		iCycle(1);
 	} else { // STRH
 		bus.write<u16>(address, (u16)reg.R[srcDestRegister], false);
@@ -1451,7 +1448,7 @@ void ARM7TDMI::thumbSpRelativeLoadStore(u16 opcode) {
 	fetchOpcode();
 
 	if constexpr (loadStore) {
-		reg.R[destinationReg] = bus.read<u32>(address, false);
+		reg.R[destinationReg] = bus.read<u32, false>(address, false);
 
 		iCycle(1);
 	} else {
@@ -1497,12 +1494,12 @@ void ARM7TDMI::thumbPushPopRegisters(u16 opcode) {
 		fetchOpcode(); // Writeback really should be inside the main loop but this works
 
 		if (emptyRegList) {
-			reg.R[15] = bus.read<u32>(address, false);
+			reg.R[15] = bus.read<u32, false>(address, false);
 			flushPipeline();
 		} else {
 			for (int i = 0; i < 8; i++) {
 				if (opcode & (1 << i)) {
-					reg.R[i] = bus.read<u32, false>(address, !firstReadWrite);
+					reg.R[i] = bus.read<u32, false, false>(address, !firstReadWrite);
 					address += 4;
 
 					if (firstReadWrite)
@@ -1511,7 +1508,7 @@ void ARM7TDMI::thumbPushPopRegisters(u16 opcode) {
 			}
 			iCycle(1);
 			if constexpr (pcLr) {
-				reg.R[15] = bus.read<u32>(address, true);
+				reg.R[15] = bus.read<u32, false>(address, true);
 				flushPipeline();
 			}
 		}
@@ -1553,7 +1550,7 @@ void ARM7TDMI::thumbMultipleLoadStore(u16 opcode) {
 	if constexpr (loadStore) { // LDMIA!
 		if (emptyRegList) {
 			reg.R[baseReg] = writeBackAddress;
-			reg.R[15] = bus.read<u32, false>(address, true);
+			reg.R[15] = bus.read<u32, false, false>(address, true);
 			flushPipeline();
 		} else {
 			for (int i = 0; i < 8; i++) {
@@ -1561,7 +1558,7 @@ void ARM7TDMI::thumbMultipleLoadStore(u16 opcode) {
 					if (firstReadWrite)
 						reg.R[baseReg] = writeBackAddress;
 
-					reg.R[i] = bus.read<u32, false>(address, !firstReadWrite);
+					reg.R[i] = bus.read<u32, false, false>(address, !firstReadWrite);
 					address += 4;
 
 					if (firstReadWrite)

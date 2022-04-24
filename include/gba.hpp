@@ -49,7 +49,7 @@ public:
 
 	u8 readDebug(u32 address);
 	template <typename T> T openBus(u32 address);
-	template <typename T, bool rotate = true> u32 read(u32 address, bool sequential);
+	template <typename T, bool code, bool rotate = true> u32 read(u32 address, bool sequential);
 	u8 readIO(u32 address);
 	void writeDebug(u32 address, u8 value, bool unrestricted);
 	template <typename T> void write(u32 address, T value, bool sequential);
