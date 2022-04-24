@@ -18,6 +18,8 @@ A WIP Game Boy Advance emulator.
 
 ## Usage Instructions
 Download the executable from Releases or compile:
+* `git clone git@github.com:KellanClark/ecnavdA-yoBemaG.git --recurse-submodules`
+* `cd ecnavdA-yoBemaG`
 * `mkdir build`
 * `cd build`
 * `cmake ..`
