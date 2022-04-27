@@ -898,12 +898,13 @@ void GameBoyAdvance::tickPrefetch(int cycles) {
 		prefetchCycles += cycles;
 
 		// TODO: Do other waitstates work?
-		prefetchIndex = prefetchCycles / (wsSequentialCycles[prefetchWaitstate] + 1);
+		prefetchIndex += prefetchCycles / (wsSequentialCycles[prefetchWaitstate] + 1);
 		prefetchCycles %= (wsSequentialCycles[prefetchWaitstate] + 1);
 
 		if (prefetchIndex > 8) {
-			prefetchRunning = false;
-			prefetchIndex = 0;
+			//prefetchRunning = false;
+			//prefetchIndex = 0;
+			prefetchIndex = 8;
 			prefetchCycles = 0;
 		}
 	}
