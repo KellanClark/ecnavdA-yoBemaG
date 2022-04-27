@@ -58,6 +58,13 @@ public:
 	bool forceNonSequential;
 	void internalCycle(int cycles);
 
+	bool prefetchRunning;
+	int prefetchIndex;
+	int prefetchWaitstate;
+	int prefetchCycles;
+	void tickPrefetch(int cycles);
+	bool checkPrefetch(u32 address, bool sequential);
+
 	std::stringstream log;
 	bool logFlash;
 
@@ -117,12 +124,8 @@ public:
 		u32 InternalMemoryControl; // 0x4xx0800
 	};
 	int sramCycles;
-	int ws0NonSequentialCycles;
-	int ws0SequentialCycles;
-	int ws1NonSequentialCycles;
-	int ws1SequentialCycles;
-	int ws2NonSequentialCycles;
-	int ws2SequentialCycles;
+	int wsNonSequentialCycles[3];
+	int wsSequentialCycles[3];
 	int ewramCycles;
 
 	std::vector<u8> biosBuff;
