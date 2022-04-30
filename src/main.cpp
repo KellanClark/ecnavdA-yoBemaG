@@ -1,21 +1,19 @@
 
 #include <cstdio>
 #include <list>
-#include <numeric>
 
 #include "SDL_audio.h"
 #include "SDL_timer.h"
-#include "arm7tdmidisasm.hpp"
 #include "imgui.h"
 #include "backends/imgui_impl_sdl.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui_memory_editor.h"
 #include <SDL.h>
 #include <SDL_opengl.h>
-#include <SDL_opengl.h>
 #include <nfd.hpp>
 
 #include "gba.hpp"
+#include "arm7tdmidisasm.hpp"
 #include "types.hpp"
 
 // Argument Variables
@@ -79,7 +77,6 @@ SDL_Scancode keymap[10] = {
 u16 lastJoypad;
 
 // Audio stuff
-bool syncToAudio;
 SDL_AudioSpec desiredAudioSpec, audioSpec;
 SDL_AudioDeviceID audioDevice;
 std::vector<i16> wavFileData;
@@ -171,9 +168,9 @@ int main(int argc, char *argv[]) {
 		.channels = 2,
 		.samples = 1024,
 		.callback = audioCallback,
-		.userdata = NULL
+		.userdata = nullptr
 	};
-	audioDevice = SDL_OpenAudioDevice(NULL, 0, &desiredAudioSpec, &audioSpec, 0);
+	audioDevice = SDL_OpenAudioDevice(nullptr, 0, &desiredAudioSpec, &audioSpec, 0);
 	SDL_PauseAudioDevice(audioDevice, 0);
 
 	// Setup ImGui
@@ -235,7 +232,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		// Joypad inputs
-		const u8 *currentKeyStates = SDL_GetKeyboardState(NULL);
+		const u8 *currentKeyStates = SDL_GetKeyboardState(nullptr);
 		u16 currentJoypad = 0;
 		for (int i = 0; i < 10; i++) {
 			if (currentKeyStates[keymap[i]])
@@ -393,7 +390,7 @@ void mainMenuBar() {
 		}
 
 		ImGui::Separator();
-		ImGui::MenuItem("ROM Info", NULL, &showRomInfo, argRomGiven);
+		ImGui::MenuItem("ROM Info", nullptr, &showRomInfo, argRomGiven);
 
 		ImGui::EndMenu();
 	}
@@ -413,12 +410,12 @@ void mainMenuBar() {
 
 		ImGui::Separator();
 		if (ImGui::BeginMenu("Audio Channels")) {
-			ImGui::MenuItem("Channel 1", NULL, &GBA.apu.ch1OverrideEnable);
-			ImGui::MenuItem("Channel 2", NULL, &GBA.apu.ch2OverrideEnable);
-			ImGui::MenuItem("Channel 3", NULL, &GBA.apu.ch3OverrideEnable);
-			ImGui::MenuItem("Channel 4", NULL, &GBA.apu.ch4OverrideEnable);
-			ImGui::MenuItem("Channel A", NULL, &GBA.apu.chAOverrideEnable);
-			ImGui::MenuItem("Channel B", NULL, &GBA.apu.chBOverrideEnable);
+			ImGui::MenuItem("Channel 1", nullptr, &GBA.apu.ch1OverrideEnable);
+			ImGui::MenuItem("Channel 2", nullptr, &GBA.apu.ch2OverrideEnable);
+			ImGui::MenuItem("Channel 3", nullptr, &GBA.apu.ch3OverrideEnable);
+			ImGui::MenuItem("Channel 4", nullptr, &GBA.apu.ch4OverrideEnable);
+			ImGui::MenuItem("Channel A", nullptr, &GBA.apu.chAOverrideEnable);
+			ImGui::MenuItem("Channel B", nullptr, &GBA.apu.chBOverrideEnable);
 
 			ImGui::EndMenu();
 		}
@@ -427,14 +424,14 @@ void mainMenuBar() {
 	}
 
 	if (ImGui::BeginMenu("Debug")) {
-		ImGui::MenuItem("Debug CPU", NULL, &showCpuDebug);
-		ImGui::MenuItem("System Log", NULL, &showSystemLog);
-		ImGui::MenuItem("Memory Editor", NULL, &showMemEditor);
-		ImGui::MenuItem("Inspect Layers", NULL, &showLayerView);
-		ImGui::MenuItem("View Tiles", NULL, &showTiles);
-		ImGui::MenuItem("View Palettes", NULL, &showPalette);
+		ImGui::MenuItem("Debug CPU", nullptr, &showCpuDebug);
+		ImGui::MenuItem("System Log", nullptr, &showSystemLog);
+		ImGui::MenuItem("Memory Editor", nullptr, &showMemEditor);
+		ImGui::MenuItem("Inspect Layers", nullptr, &showLayerView);
+		ImGui::MenuItem("View Tiles", nullptr, &showTiles);
+		ImGui::MenuItem("View Palettes", nullptr, &showPalette);
 		ImGui::Separator();
-		ImGui::MenuItem("ImGui Demo", NULL, &showDemoWindow);
+		ImGui::MenuItem("ImGui Demo", nullptr, &showDemoWindow);
 
 		ImGui::EndMenu();
 	}
@@ -577,7 +574,7 @@ void systemLogWindow() {
 		logFileStream.close();
 	}
 
-	if (ImGui::TreeNode("Diassembler Options")) {
+	if (ImGui::TreeNode("Disassembler Options")) {
 		ImGui::Checkbox("Show AL Condition", (bool *)&disassembler.options.showALCondition);
 		ImGui::Checkbox("Always Show S Bit", (bool *)&disassembler.options.alwaysShowSBit);
 		ImGui::Checkbox("Show Operands in Hex", (bool *)&disassembler.options.printOperandsHex);
@@ -639,7 +636,7 @@ void memEditorWindow() {
 	ImGui::SetNextWindowSize(ImVec2(570, 400), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Memory Editor", &showMemEditor);
 
-	// I *may* have straight coppied this text from GBATEK
+	// I *may* have straight copied this text from GBATEK
 	if (ImGui::BeginCombo("Location", "Jump to Memory Range")) {
 		if (ImGui::MenuItem("BIOS - System ROM (0x0000000-0x0003FFF)"))
 			memEditor.GotoAddrAndHighlight(0x0000000, 0x0000000);
@@ -663,9 +660,9 @@ void memEditorWindow() {
 		ImGui::EndCombo();
 	}
 	ImGui::SameLine();
-	ImGui::Checkbox("Unrestrited Writes", &memEditorUnrestrictedWrites);
+	ImGui::Checkbox("Unrestricted Writes", &memEditorUnrestrictedWrites);
 
-	memEditor.DrawContents(NULL, 0x10000000);
+	memEditor.DrawContents(nullptr, 0x10000000);
 
 	ImGui::End();
 }
