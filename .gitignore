@@ -33,6 +33,7 @@
 
 # Misc.
 build/
+cmake-build*/
 .cache/
 .vscode/
 .idea/

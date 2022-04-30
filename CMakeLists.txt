@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 project(ecnavdA-yoBemaG)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -9,14 +9,20 @@ endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-find_package(SDL2 REQUIRED)
+include(FetchContent)
+FetchContent_Declare(SDL2
+		GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+		GIT_TAG release-2.0.22
+		)
+FetchContent_MakeAvailable(SDL2)
+#find_package(SDL2 REQUIRED)
 
 add_subdirectory(modules/nativefiledialog-extended)
 add_subdirectory(modules/fmt)
 
 include_directories(
 	include/
-	${SDL2_INCLUDE_DIRS}
+	#${SDL2_INCLUDE_DIRS}
 	modules/imgui/
 	modules/imgui_club/imgui_memory_editor
 )
@@ -59,11 +65,12 @@ target_compile_options(ecnavda-yobemag PRIVATE
 )
 
 target_link_libraries(ecnavda-yobemag PRIVATE
-	${SDL2_LIBRARIES}
+	#${SDL2_LIBRARIES}
+	SDL2::SDL2-static
 	nfd
 	fmt
 	-lstdc++
-	-lSDL2
+	#-lSDL2
 	-ldl
 	-lGL
 	-lm
