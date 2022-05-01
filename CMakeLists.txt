@@ -11,9 +11,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 include(FetchContent)
 FetchContent_Declare(SDL2
-		GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-		GIT_TAG release-2.0.22
-		)
+	GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+	GIT_TAG release-2.0.22
+	)
 FetchContent_MakeAvailable(SDL2)
 #find_package(SDL2 REQUIRED)
 
@@ -66,13 +66,15 @@ target_compile_options(ecnavda-yobemag PRIVATE
 
 target_link_libraries(ecnavda-yobemag PRIVATE
 	#${SDL2_LIBRARIES}
-	SDL2::SDL2-static
+	SDL2-static
+	SDL2main
 	nfd
 	fmt
 	-lstdc++
 	#-lSDL2
-	-ldl
-	-lGL
+	#-ldl
+	#-lGL
+	-lgdi32 -lopengl32 -limm32 -lmingw32
 	-lm
 	-lpthread
 	#-fsanitize=address
