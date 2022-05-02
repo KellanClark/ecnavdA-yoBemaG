@@ -302,7 +302,7 @@ int main(int argc, char *argv[]) {
 		SDL_GL_SwapWindow(window);
 	}
 
-	GBA.cpu.addThreadEvent(GBACPU::STOP, (int)0);
+	GBA.cpu.addThreadEvent(GBACPU::STOP, (u64)0);
 	emuThread.detach();
 
 	// WAV file
@@ -398,7 +398,7 @@ void mainMenuBar() {
 	if (ImGui::BeginMenu("Emulation")) {
 		if (GBA.cpu.running) {
 			if (ImGui::MenuItem("Pause"))
-				GBA.cpu.addThreadEvent(GBACPU::STOP, (int)0);
+				GBA.cpu.addThreadEvent(GBACPU::STOP, (u64)0);
 		} else {
 			if (ImGui::MenuItem("Unpause"))
 				GBA.cpu.addThreadEvent(GBACPU::START);
@@ -495,7 +495,7 @@ void cpuDebugWindow() {
 	ImGui::SameLine();
 	if (GBA.cpu.running) {
 		if (ImGui::Button("Pause"))
-			GBA.cpu.addThreadEvent(GBACPU::STOP, (int)0);
+			GBA.cpu.addThreadEvent(GBACPU::STOP, (u64)0);
 	} else {
 		if (ImGui::Button("Unpause"))
 			GBA.cpu.addThreadEvent(GBACPU::START);
