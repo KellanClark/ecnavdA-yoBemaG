@@ -11,13 +11,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 find_package(SDL2 REQUIRED)
 
-add_definitions(-DFMT_EXCEPTIONS=0)
+add_definitions(FMT_EXCEPTIONS=0)
 add_subdirectory(modules/nativefiledialog-extended)
 add_subdirectory(modules/fmt)
 
 include_directories(
 	include/
-	${SDL2_INCLUDE_DIRS}
 	modules/imgui/
 	modules/imgui_club/imgui_memory_editor
 )
@@ -66,7 +65,6 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIA
 	#set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/clang:-g /clang:-O3")
 
 	target_link_libraries(ecnavda-yobemag PRIVATE
-		${SDL2_LIBRARIES}
 		SDL2::SDL2
 		nfd
 		fmt
@@ -101,11 +99,10 @@ else()
 	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g -O3")
 
 	target_link_libraries(ecnavda-yobemag PRIVATE
-		${SDL2_LIBRARIES}
+		SDL2::SDL2
 		nfd
 		fmt
 		-lstdc++
-		-lSDL2
 		-ldl
 		-lGL
 		-lm
