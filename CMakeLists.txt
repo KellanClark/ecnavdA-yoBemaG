@@ -104,6 +104,7 @@ else()
 		nfd
 		fmt
 		-lstdc++
+		-lSDL2
 		-ldl
 		-lGL
 		-lm
