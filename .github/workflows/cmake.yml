@@ -29,8 +29,11 @@ jobs:
       run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
 
     - name: Build
-      # Build your program with the given configuration
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+    
+    - name: Create Archive
+      run: tar -cavf ecnavda-yobemag_linux.zip build/ecnavda-yobemag LICENSE
+      run: tar -cavf ecnavda-yobemag_linux.tar.gz build/ecnavda-yobemag LICENSE
 
     - name: Release
       uses: softprops/action-gh-release@v1
@@ -39,8 +42,8 @@ jobs:
         prerelease: true
         name: "Development Build"
         files: |
-          build/ecnavda-yobemag
-          LICENSE
+          ecnavda-yobemag_linux.zip
+          ecnavda-yobemag_linux.tar.gz
 
   build-windows:
     runs-on: windows-latest
@@ -59,5 +62,7 @@ jobs:
       run: cmake -B ${{github.workspace}}/build -T clangcl -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
 
     - name: Build
-      # Build your program with the given configuration
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+    - name: Create Archive
+      run: tar -cavf ecnavda-yobemag_windows.zip ecnavda-yobemag.exe SDL2.dll LICENSE
