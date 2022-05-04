@@ -9,7 +9,7 @@ endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-find_package(SDL2 REQUIRED)
+find_package(SDL2 CONFIG REQUIRED)
 
 add_subdirectory(modules/nativefiledialog-extended)
 add_subdirectory(modules/fmt)
