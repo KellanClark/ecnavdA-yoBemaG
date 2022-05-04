@@ -13,7 +13,7 @@ A WIP Game Boy Advance emulator.
 * [HLE BIOS] SWIs 0x10-0x2A
 
 ## Requirements
-* Any modern 64 bit linux distribution (may work on 32 bit but not tested)
+* Any modern 64 bit linux distribution
 * `cmake`, `make`, SDL2 development libraries, Gtk3 development libraries (for `nativefiledialog-extended`), and a compiler that supports C++20
 
 ## Usage Instructions
