@@ -105,6 +105,7 @@ else()
 		fmt
 		-lstdc++
 		-lSDL2
+		-lX11
 		-ldl
 		-lGL
 		-lm
