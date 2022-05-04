@@ -64,6 +64,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIA
 
 	target_link_libraries(ecnavda-yobemag PRIVATE
 		SDL2::SDL2
+		SDL2::SDL2main
 		nfd
 		fmt
 		opengl32
