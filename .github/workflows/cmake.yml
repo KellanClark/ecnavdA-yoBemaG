@@ -33,8 +33,12 @@ jobs:
     
     - name: Create Archive
       run: |
-        tar -cavf ecnavda-yobemag_linux.zip build/ecnavda-yobemag LICENSE
-        tar -cavf ecnavda-yobemag_linux.tar.gz build/ecnavda-yobemag LICENSE
+        mkdir upload
+        mv build/ecnavda-yobemag upload/
+        mv LICENSE upload/
+        cd upload
+        tar -cavf ecnavda-yobemag_linux.zip *
+        tar -cavf ecnavda-yobemag_linux.tar.gz *
 
     - name: Release
       uses: softprops/action-gh-release@v1
@@ -66,7 +70,13 @@ jobs:
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
 
     - name: Create Archive
-      run: tar -cavf ecnavda-yobemag_windows.zip build/Release/ecnavda-yobemag.exe build/Release/SDL2.dll LICENSE
+      run: |
+        mkdir upload
+        mv build/Relaeas/ecnavda-yobemag.exe upload/
+        mv build/Release/SDL2.dll upload/
+        mv LICENSE upload/
+        cd upload
+        tar -cavf ecnavda-yobemag_windows.zip *
 
     - name: Release
       uses: softprops/action-gh-release@v1
