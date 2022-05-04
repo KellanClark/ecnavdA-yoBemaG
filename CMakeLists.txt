@@ -102,6 +102,7 @@ else()
 	target_link_libraries(ecnavda-yobemag PRIVATE
 		${SDL2_LIBRARIES}
 		SDL2::SDL2
+		SDL2::SDL2main
 		nfd
 		fmt
 		-lstdc++
