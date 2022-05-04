@@ -100,12 +100,12 @@ else()
 	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g -O3")
 
 	target_link_libraries(ecnavda-yobemag PRIVATE
+		${SDL2_LIBRARIES}
 		SDL2::SDL2
 		nfd
 		fmt
 		-lstdc++
 		-lSDL2
-		-lX11
 		-ldl
 		-lGL
 		-lm
