@@ -11,7 +11,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 find_package(SDL2 REQUIRED)
 
-add_definitions(FMT_EXCEPTIONS=0)
 add_subdirectory(modules/nativefiledialog-extended)
 add_subdirectory(modules/fmt)
 
@@ -42,6 +41,8 @@ add_executable(ecnavda-yobemag
 	src/ppu.cpp
 	src/timer.cpp
 )
+
+target_compile_definitions(fmt PUBLIC FMT_EXCEPTIONS=0)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
 	target_compile_options(ecnavda-yobemag PRIVATE
