@@ -73,7 +73,7 @@ jobs:
     - name: Create Archive
       run: |
         mkdir upload
-        mv build/Relaeas/ecnavda-yobemag.exe upload/
+        mv build/Release/ecnavda-yobemag.exe upload/
         mv build/Release/SDL2.dll upload/
         mv LICENSE upload/
         cd upload
