@@ -60,11 +60,6 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIA
 		#-fsanitize=thread
 	)
 
-	#set(CMAKE_CXX_FLAGS_DEBUG "/clang:-g /clang:-Og")
-	#set(CMAKE_CXX_FLAGS_RELEASE "/clang:-O3")
-	#set(CMAKE_CXX_FLAGS_MINSIZEREL "/clang:-Os")
-	#set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/clang:-g /clang:-O3")
-
 	target_link_libraries(ecnavda-yobemag PRIVATE
 		SDL2::SDL2
 		nfd
@@ -93,11 +88,6 @@ else()
 		#-fsanitize=undefined
 		#-fsanitize=thread
 		)
-
-	set(CMAKE_CXX_FLAGS_DEBUG "-g -Og")
-	set(CMAKE_CXX_FLAGS_RELEASE "-O3")
-	set(CMAKE_CXX_FLAGS_MINSIZEREL "-Os")
-	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g -O3")
 
 	target_link_libraries(ecnavda-yobemag PRIVATE
 		${SDL2_LIBRARIES}
