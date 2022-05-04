@@ -15,9 +15,11 @@ add_subdirectory(modules/nativefiledialog-extended)
 add_subdirectory(modules/fmt)
 
 include_directories(
-	include/
+	${SDL2_INCLUDE_DIRS}
 	modules/imgui/
 	modules/imgui_club/imgui_memory_editor
+
+	include/
 )
 
 add_executable(ecnavda-yobemag
@@ -91,8 +93,6 @@ else()
 
 	target_link_libraries(ecnavda-yobemag PRIVATE
 		${SDL2_LIBRARIES}
-		SDL2::SDL2
-		SDL2::SDL2main
 		nfd
 		fmt
 		-lstdc++
