@@ -37,8 +37,9 @@ jobs:
         mv build/ecnavda-yobemag upload/
         mv LICENSE upload/
         cd upload
-        tar -cavf ecnavda-yobemag_linux.zip *
-        tar -cavf ecnavda-yobemag_linux.tar.gz *
+        tar -cavf ../ecnavda-yobemag_linux.zip *
+        tar -cavf ../ecnavda-yobemag_linux.tar.gz *
+        cd ..
 
     - name: Release
       uses: softprops/action-gh-release@v1
@@ -76,7 +77,8 @@ jobs:
         mv build/Release/SDL2.dll upload/
         mv LICENSE upload/
         cd upload
-        tar -cavf ecnavda-yobemag_windows.zip *
+        tar -cavf ../ecnavda-yobemag_windows.zip *
+        cd ..
 
     - name: Release
       uses: softprops/action-gh-release@v1
