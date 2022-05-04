@@ -32,8 +32,9 @@ jobs:
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
     
     - name: Create Archive
-      run: tar -cavf ecnavda-yobemag_linux.zip build/ecnavda-yobemag LICENSE
-      run: tar -cavf ecnavda-yobemag_linux.tar.gz build/ecnavda-yobemag LICENSE
+      run: |
+        tar -cavf ecnavda-yobemag_linux.zip build/ecnavda-yobemag LICENSE
+        tar -cavf ecnavda-yobemag_linux.tar.gz build/ecnavda-yobemag LICENSE
 
     - name: Release
       uses: softprops/action-gh-release@v1
