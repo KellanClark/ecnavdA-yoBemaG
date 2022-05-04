@@ -66,4 +66,13 @@ jobs:
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
 
     - name: Create Archive
-      run: tar -cavf ecnavda-yobemag_windows.zip ecnavda-yobemag.exe SDL2.dll LICENSE
+      run: tar -cavf ecnavda-yobemag_windows.zip build/ecnavda-yobemag.exe build/SDL2.dll LICENSE
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: "latest"
+        prerelease: true
+        name: "Development Build"
+        files: |
+          ecnavda-yobemag_windows.zip
