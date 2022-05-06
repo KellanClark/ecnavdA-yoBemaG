@@ -1636,9 +1636,6 @@ constexpr thumbLutEntry decodeThumb() {
 	if constexpr ((lutFillIndex & thumbAddSubtractMask) == thumbAddSubtractBits) {
 		return &ARM7TDMI::thumbAddSubtract<(bool)(lutFillIndex & 0b0000'0100'00), (bool)(lutFillIndex & 0b0000'0010'00), (lutFillIndex & 0b0000'0001'11)>;
 	} else if constexpr ((lutFillIndex & thumbMoveShiftedRegMask) == thumbMoveShiftedRegBits) {
-		static_assert((lutFillIndex & thumbMoveShiftedRegMask) == thumbMoveShiftedRegBits, "wtf");
-		static_assert((lutFillIndex & 0b1110'0000'00) == 0, "how?");
-		static_assert(((lutFillIndex & 0b0001'1000'00) >> 5) != 3, "ERROR");
 		return &ARM7TDMI::thumbMoveShiftedReg<((lutFillIndex & 0b0001'1000'00) >> 5), (lutFillIndex & 0b0000'0111'11)>;
 	} else if constexpr ((lutFillIndex & thumbAluImmediateMask) == thumbAluImmediateBits) {
 		return &ARM7TDMI::thumbAluImmediate<((lutFillIndex & 0b0001'1000'00) >> 5), ((lutFillIndex & 0b0000'0111'00) >> 2)>;
