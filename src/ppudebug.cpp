@@ -107,7 +107,7 @@ void drawDebugLayer(bgLayer type, u16 *buffer) {
 	screenXSize = layerInfo[currentlySelectedLayer].xSize;
 	screenYSize = layerInfo[currentlySelectedLayer].ySize;
 	switch (type) {
-	case BG0_REGULAR: // Shamefuly copied from the PPU
+	case BG0_REGULAR: // Shamefully copied from the PPU
 	case BG1_REGULAR:
 	case BG2_REGULAR:
 	case BG3_REGULAR: {
@@ -144,7 +144,7 @@ void drawDebugLayer(bgLayer type, u16 *buffer) {
 
 		int paletteBank = 0;
 		bool verticalFlip = false;
-		bool horizontolFlip = false;
+		bool horizontalFlip = false;
 		int tileIndex = 0;
 		int tileRowAddress = 0;
 
@@ -159,7 +159,7 @@ void drawDebugLayer(bgLayer type, u16 *buffer) {
 					u16 tilemapEntry = (GBA.ppu.vram[tilemapIndex + 1] << 8) | GBA.ppu.vram[tilemapIndex];
 					paletteBank = (tilemapEntry >> 8) & 0xF0;
 					verticalFlip = tilemapEntry & 0x0800;
-					horizontolFlip = tilemapEntry & 0x0400;
+					horizontalFlip = tilemapEntry & 0x0400;
 					tileIndex = tilemapEntry & 0x3FF;
 
 					int yMod = verticalFlip ? (7 - (y % 8)) : (y % 8);
@@ -167,7 +167,7 @@ void drawDebugLayer(bgLayer type, u16 *buffer) {
 				}
 
 				u8 tileData;
-				int xMod = horizontolFlip ? (7 - (x % 8)) : (x % 8);
+				int xMod = horizontalFlip ? (7 - (x % 8)) : (x % 8);
 				if (bpp) { // 8 bits per pixel
 					tileData = GBA.ppu.vram[tileRowAddress + xMod];
 				} else { // 4 bits per pixel
@@ -304,9 +304,9 @@ void tilesWindow() {
 }
 
 #define color555to8888(x) \
-	(((int)((((x & 0x7C00) >> 10) / (float)31) * 255) << 8) | \
-	((int)((((x & 0x03E0) >> 5) / (float)31) * 255) << 16) | \
-	((int)(((x & 0x001F) / (float)31) * 255) << 24) | 0xFF)
+	(((int)(((((x) & 0x7C00) >> 10) / (float)31) * 255) << 8) | \
+	((int)(((((x) & 0x03E0) >> 5) / (float)31) * 255) << 16) | \
+	((int)((((x) & 0x001F) / (float)31) * 255) << 24) | 0xFF)
 
 bool showPalette;
 void paletteWindow() {

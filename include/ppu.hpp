@@ -75,7 +75,7 @@ public:
 			struct {
 				u16 objX : 9;
 				u16 : 3;
-				u16 horizontolFlip : 1;
+				u16 horizontalFlip : 1;
 				u16 verticalFlip : 1;
 				u16 size : 2;
 			};

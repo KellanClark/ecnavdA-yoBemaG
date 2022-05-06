@@ -269,11 +269,11 @@ void GBAPPU::drawObjects(int priority) {
 						} else {
 							unsigned int mosX = ((obj->mosaic ? (x - (x % (objMosH + 1))) : x) - obj->objX) & 0x1FF;
 							if ((mosX >= 0) && (mosX < xSize)) {
-								tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - mosY) : mosY) / 8) * (objMappingDimension ? (xSize / 8) : (32 >> obj->bpp))) + ((obj->horizontolFlip ? (xSize - 1 - mosX) : mosX) / 8)) * (32 << obj->bpp)) + (yMod * (4 << obj->bpp));
+								tileRowAddress = 0x10000 + ((obj->tileIndex & ~(1 * obj->bpp)) * 32) + (((((obj->verticalFlip ? (ySize - 1 - mosY) : mosY) / 8) * (objMappingDimension ? (xSize / 8) : (32 >> obj->bpp))) + ((obj->horizontalFlip ? (xSize - 1 - mosX) : mosX) / 8)) * (32 << obj->bpp)) + (yMod * (4 << obj->bpp));
 								if (((tileRowAddress <= 0x14000) && (bgMode >= 3)) || (tileRowAddress >= 0x18000))
 									break;
 
-								int xMod = obj->horizontolFlip ? (7 - (mosX % 8)) : (mosX % 8);
+								int xMod = obj->horizontalFlip ? (7 - (mosX % 8)) : (mosX % 8);
 								if (obj->bpp) { // 8 bits per pixel
 									tileData = vram[tileRowAddress + xMod];
 								} else { // 4 bits per pixel
@@ -415,7 +415,7 @@ void GBAPPU::drawBgTile() {
 
 	int paletteBank = 0;
 	bool verticalFlip = false;
-	bool horizontolFlip = false;
+	bool horizontalFlip = false;
 	int tileIndex = 0;
 	int tileRowAddress = 0;
 
@@ -437,7 +437,7 @@ void GBAPPU::drawBgTile() {
 			u16 tilemapEntry = (vram[tilemapIndex + 1] << 8) | vram[tilemapIndex];
 			paletteBank = (tilemapEntry >> 8) & 0xF0;
 			verticalFlip = tilemapEntry & 0x0800;
-			horizontolFlip = tilemapEntry & 0x0400;
+			horizontalFlip = tilemapEntry & 0x0400;
 			tileIndex = tilemapEntry & 0x3FF;
 
 			int yMod = verticalFlip ? (7 - (y % 8)) : (y % 8);
@@ -447,7 +447,7 @@ void GBAPPU::drawBgTile() {
 			continue;
 
 		u8 tileData;
-		int xMod = horizontolFlip ? (7 - (mosX % 8)) : (mosX % 8);
+		int xMod = horizontalFlip ? (7 - (mosX % 8)) : (mosX % 8);
 		if (bpp) { // 8 bits per pixel
 			tileData = vram[tileRowAddress + xMod];
 		} else { // 4 bits per pixel

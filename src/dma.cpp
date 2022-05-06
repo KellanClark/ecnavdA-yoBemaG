@@ -134,7 +134,7 @@ void GBADMA::doDma() {
 	if (length == 0)
 		length = (channel == 3) ? 0x10000 : 0x4000;
 
-	// TODO: Create shaddow DMACNT registers
+	// TODO: Create shadow DMACNT registers
 	// TODO: Find if force alignment is kept in internal src/dst registers
 	if ((control->srcControl < 3) && (*sourceAddress >= 0x8000000) && (*sourceAddress < 0xE000000))
 		control->srcControl = 0;
@@ -169,16 +169,16 @@ void GBADMA::doDma() {
 		bus.log << "\nScanline " << bus.ppu.currentScanline << "\n";
 	}
 
-	bool hasTransfered = false;
+	bool hasTransferred = false;
 	if (control->transferSize) { // 32 bit
 		for (int i = 0; i < length; i++) {
 			if (*sourceAddress < 0x2000000) {
-				bus.write<u32>(*destinationAddress & ~3, *openBus, hasTransfered);
+				bus.write<u32>(*destinationAddress & ~3, *openBus, hasTransferred);
 			} else {
-				u32 data = bus.read<u32, false>(*sourceAddress & ~3, hasTransfered);
-				if (!hasTransfered && (*sourceAddress >= 0x8000000) && (*destinationAddress >= 0x8000000))
-					hasTransfered = true;
-				bus.write<u32>(*destinationAddress & ~3, data, hasTransfered);
+				u32 data = bus.read<u32, false>(*sourceAddress & ~3, hasTransferred);
+				if (!hasTransferred && (*sourceAddress >= 0x8000000) && (*destinationAddress >= 0x8000000))
+					hasTransferred = true;
+				bus.write<u32>(*destinationAddress & ~3, data, hasTransferred);
 				*openBus = data;
 			}
 
@@ -194,17 +194,17 @@ void GBADMA::doDma() {
 				*sourceAddress -= 4;
 			}
 
-			hasTransfered = true;
+			hasTransferred = true;
 		}
 	} else { // 16 bit
 		for (int i = 0; i < length; i++) {
 			if (*sourceAddress < 0x2000000) {
-				bus.write<u16>(*destinationAddress & ~1, (u16)*openBus, hasTransfered);
+				bus.write<u16>(*destinationAddress & ~1, (u16)*openBus, hasTransferred);
 			} else {
-				u16 data = bus.read<u16, false>(*sourceAddress & ~1, hasTransfered);
-				if (!hasTransfered && (*sourceAddress >= 0x8000000) && (*destinationAddress >= 0x8000000))
-					hasTransfered = true;
-				bus.write<u16>(*destinationAddress & ~1, data, hasTransfered);
+				u16 data = bus.read<u16, false>(*sourceAddress & ~1, hasTransferred);
+				if (!hasTransferred && (*sourceAddress >= 0x8000000) && (*destinationAddress >= 0x8000000))
+					hasTransferred = true;
+				bus.write<u16>(*destinationAddress & ~1, data, hasTransferred);
 				*openBus = (data << 16) | data;
 			}
 
@@ -220,7 +220,7 @@ void GBADMA::doDma() {
 				*sourceAddress -= 2;
 			}
 
-			hasTransfered = true;
+			hasTransferred = true;
 		}
 	}
 	*destinationAddress &= 0x07FFFFFF;

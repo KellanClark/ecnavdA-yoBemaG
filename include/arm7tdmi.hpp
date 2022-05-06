@@ -62,7 +62,7 @@ public:
 	u32 pipelineOpcode3; // R15 + 8
 	bool nextFetchType;
 
-	bool checkCondition(int condtionCode);
+	bool checkCondition(int conditionCode);
 	void serviceInterrupt();
 	void fetchOpcode();
 	void flushPipeline();
@@ -108,7 +108,7 @@ public:
 	template <bool loadStore, int baseReg> void thumbMultipleLoadStore(u16 opcode);						// 15
 	template <int condition> void thumbConditionalBranch(u16 opcode);									// 16
 	void thumbSoftwareInterrupt(u16 opcode);															// 17
-	void thumbUncondtionalBranch(u16 opcode);															// 18
+	void thumbUnconditionalBranch(u16 opcode);															// 18
 	template <bool lowHigh> void thumbLongBranchLink(u16 opcode);										// 19
 
 	static const std::array<void (ARM7TDMI::*)(u32), 4096> LUT;

@@ -7,7 +7,7 @@
 
 #include "types.hpp"
 
-class ARM7TDMIDisasmbler {
+class ARM7TDMIDisassembler {
 public:
     std::string disassemble(u32 address, u32 opcode, bool thumb);
 	void defaultSettings();
@@ -27,6 +27,6 @@ private:
 	std::string disassembleShift(u32 opcode, bool showUpDown);
 };
 
-extern ARM7TDMIDisasmbler disassembler; // TODO: This shouldn't be required
+extern ARM7TDMIDisassembler disassembler; // TODO: This shouldn't be required
 
 #endif

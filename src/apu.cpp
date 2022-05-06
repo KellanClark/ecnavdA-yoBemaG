@@ -249,7 +249,7 @@ void GBAAPU::generateSample() {
 void GBAAPU::onTimer(int timerNum) {
 	if (soundControl.chATimer == timerNum) {
 		// Get new sample
-		if (channelA.fifo.size()) {
+		if (!channelA.fifo.empty()) {
 			channelA.currentSample = (float)channelA.fifo.front() / 128;
 			channelA.fifo.pop();
 		} else {
@@ -262,7 +262,7 @@ void GBAAPU::onTimer(int timerNum) {
 	}
 	if (soundControl.chBTimer == timerNum) {
 		// Get new sample
-		if (channelB.fifo.size()) {
+		if (!channelB.fifo.empty()) {
 			channelB.currentSample = (float)channelB.fifo.front() / 128;
 			channelB.fifo.pop();
 		} else {

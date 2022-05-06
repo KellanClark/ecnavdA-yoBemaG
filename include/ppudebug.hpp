@@ -7,7 +7,6 @@
 #include "backends/imgui_impl_opengl3.h"
 #include <SDL.h>
 #include <SDL_opengl.h>
-#include <SDL_opengl.h>
 
 #include "types.hpp"
 #include "gba.hpp"

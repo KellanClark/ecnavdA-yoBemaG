@@ -63,12 +63,12 @@ static const u16 thumbConditionalBranchMask = 0b1111'0000'00;
 static const u16 thumbConditionalBranchBits = 0b1101'0000'00;
 static const u16 thumbSoftwareInterruptMask = 0b1111'1111'00;
 static const u16 thumbSoftwareInterruptBits = 0b1101'1111'00;
-static const u16 thumbUncondtionalBranchMask = 0b1111'1000'00;
-static const u16 thumbUncondtionalBranchBits = 0b1110'0000'00;
+static const u16 thumbUnconditionalBranchMask = 0b1111'1000'00;
+static const u16 thumbUnconditionalBranchBits = 0b1110'0000'00;
 static const u16 thumbLongBranchLinkMask = 0b1111'0000'00;
 static const u16 thumbLongBranchLinkBits = 0b1111'0000'00;
 
-std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb) {
+std::string ARM7TDMIDisassembler::disassemble(u32 address, u32 opcode, bool thumb) {
 	std::stringstream disassembledOpcode;
 
 	// Get condition code
@@ -356,7 +356,7 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 			disassembledOpcode << jmpAddress;
 
 			return disassembledOpcode.str();
-		} else if ((lutIndex & thumbUncondtionalBranchMask) == thumbUncondtionalBranchBits) {
+		} else if ((lutIndex & thumbUnconditionalBranchMask) == thumbUnconditionalBranchBits) {
 			u32 jmpAddress = address + ((i16)((u16)opcode << 5) >> 4) + 4;
 
 			disassembledOpcode << "B #";
@@ -683,7 +683,7 @@ std::string ARM7TDMIDisasmbler::disassemble(u32 address, u32 opcode, bool thumb)
 	}
 }
 
-std::string ARM7TDMIDisasmbler::getRegName(unsigned int regNumber) {
+std::string ARM7TDMIDisassembler::getRegName(unsigned int regNumber) {
 	if (options.simplifyRegisterNames) {
 		switch (regNumber) {
 		case 13:
@@ -697,7 +697,7 @@ std::string ARM7TDMIDisasmbler::getRegName(unsigned int regNumber) {
 	return (std::string)"r" + std::to_string(regNumber);
 }
 
-std::string ARM7TDMIDisasmbler::disassembleShift(u32 opcode, bool showUpDown) {
+std::string ARM7TDMIDisassembler::disassembleShift(u32 opcode, bool showUpDown) {
 	std::stringstream returnValue;
 
 	if (showUpDown && !((opcode >> 25) & 1)) {
@@ -762,7 +762,7 @@ std::string ARM7TDMIDisasmbler::disassembleShift(u32 opcode, bool showUpDown) {
 	return returnValue.str();
 }
 
-void ARM7TDMIDisasmbler::defaultSettings() {
+void ARM7TDMIDisassembler::defaultSettings() {
     options.showALCondition = false;
 	options.alwaysShowSBit = false;
 	options.printOperandsHex = true;
@@ -772,4 +772,4 @@ void ARM7TDMIDisasmbler::defaultSettings() {
 	options.ldmStmStackSuffixes = false;
 }
 
-ARM7TDMIDisasmbler disassembler;
+ARM7TDMIDisassembler disassembler;

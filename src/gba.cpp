@@ -274,13 +274,13 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 
 		// Split everything into u8
 		if (sizeof(T) == 4) {
-			u32 val = readIO(alignedAddress | 0);
+			val  = readIO(alignedAddress | 0);
 			val |= readIO(alignedAddress | 1) << 8;
 			val |= readIO(alignedAddress | 2) << 16;
 			val |= readIO(alignedAddress | 3) << 24;
 			return val;
 		} else if (sizeof(T) == 2) {
-			u16 val = readIO(alignedAddress | 0);
+			val  = readIO(alignedAddress | 0);
 			val |= readIO(alignedAddress | 1) << 8;
 			return val;
 		} else if (sizeof(T) == 1) {
@@ -868,7 +868,7 @@ void GameBoyAdvance::writeIO(u32 address, u8 value) {
 			break;
 		case 0x301: // HALTCNT
 			if (cpu.reg.R[15] <= 0x3FFF) {
-				if (value & 0x80) { // TODO: Are these mutally exclusive?
+				if (value & 0x80) { // TODO: Are these mutually exclusive?
 					cpu.stopped = true;
 				} else {
 					cpu.halted = true;

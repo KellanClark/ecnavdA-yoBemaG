@@ -71,8 +71,8 @@ void ARM7TDMI::cycle() {
 	//	printf("0x%08X\n", reg.R[1]);
 }
 
-inline bool ARM7TDMI::checkCondition(int condtionCode) {
-	switch (condtionCode) {
+inline bool ARM7TDMI::checkCondition(int conditionCode) {
+	switch (conditionCode) {
 	case 0x0: return reg.flagZ;
 	case 0x1: return !reg.flagZ;
 	case 0x2: return reg.flagC;
@@ -206,8 +206,8 @@ static const u16 thumbConditionalBranchMask = 0b1111'0000'00;
 static const u16 thumbConditionalBranchBits = 0b1101'0000'00;
 static const u16 thumbSoftwareInterruptMask = 0b1111'1111'00;
 static const u16 thumbSoftwareInterruptBits = 0b1101'1111'00;
-static const u16 thumbUncondtionalBranchMask = 0b1111'1000'00;
-static const u16 thumbUncondtionalBranchBits = 0b1110'0000'00;
+static const u16 thumbUnconditionalBranchMask = 0b1111'1000'00;
+static const u16 thumbUnconditionalBranchBits = 0b1110'0000'00;
 static const u16 thumbLongBranchLinkMask = 0b1111'0000'00;
 static const u16 thumbLongBranchLinkBits = 0b1111'0000'00;
 
@@ -939,7 +939,7 @@ void ARM7TDMI::blockDataTransfer(u32 opcode) {
 							reg.R[baseRegister] = writeBackAddress;
 					}
 
-					reg.R[i] = bus.read<u32, false, false>(address, !firstReadWrite);;
+					reg.R[i] = bus.read<u32, false, false>(address, !firstReadWrite);
 					address += 4;
 
 					if (firstReadWrite)
@@ -1608,7 +1608,7 @@ void ARM7TDMI::thumbSoftwareInterrupt(u16 opcode) {
 	flushPipeline();
 }
 
-void ARM7TDMI::thumbUncondtionalBranch(u16 opcode) {
+void ARM7TDMI::thumbUnconditionalBranch(u16 opcode) {
 	u32 newAddress = reg.R[15] + ((i16)(opcode << 5) >> 4);
 	fetchOpcode();
 
@@ -1636,6 +1636,9 @@ constexpr thumbLutEntry decodeThumb() {
 	if ((lutFillIndex & thumbAddSubtractMask) == thumbAddSubtractBits) {
 		return &ARM7TDMI::thumbAddSubtract<(bool)(lutFillIndex & 0b0000'0100'00), (bool)(lutFillIndex & 0b0000'0010'00), (lutFillIndex & 0b0000'0001'11)>;
 	} else if ((lutFillIndex & thumbMoveShiftedRegMask) == thumbMoveShiftedRegBits) {
+		static_assert((lutFillIndex & thumbMoveShiftedRegMask) == thumbMoveShiftedRegBits, "wtf");
+		static_assert((lutFillIndex & 0b1110'0000'00) == 0, "how?");
+		static_assert(((lutFillIndex & 0b0001'1000'00) >> 5) != 3, "ERROR");
 		return &ARM7TDMI::thumbMoveShiftedReg<((lutFillIndex & 0b0001'1000'00) >> 5), (lutFillIndex & 0b0000'0111'11)>;
 	} else if ((lutFillIndex & thumbAluImmediateMask) == thumbAluImmediateBits) {
 		return &ARM7TDMI::thumbAluImmediate<((lutFillIndex & 0b0001'1000'00) >> 5), ((lutFillIndex & 0b0000'0111'00) >> 2)>;
@@ -1667,8 +1670,8 @@ constexpr thumbLutEntry decodeThumb() {
 		return &ARM7TDMI::thumbSoftwareInterrupt;
 	} else if ((lutFillIndex & thumbConditionalBranchMask) == thumbConditionalBranchBits) {
 		return &ARM7TDMI::thumbConditionalBranch<((lutFillIndex & 0b0000'1111'00) >> 2)>;
-	} else if ((lutFillIndex & thumbUncondtionalBranchMask) == thumbUncondtionalBranchBits) {
-		return &ARM7TDMI::thumbUncondtionalBranch;
+	} else if ((lutFillIndex & thumbUnconditionalBranchMask) == thumbUnconditionalBranchBits) {
+		return &ARM7TDMI::thumbUnconditionalBranch;
 	} else if ((lutFillIndex & thumbLongBranchLinkMask) == thumbLongBranchLinkBits) {
 		return &ARM7TDMI::thumbLongBranchLink<(bool)(lutFillIndex & 0b0000'1000'00)>;
 	}
