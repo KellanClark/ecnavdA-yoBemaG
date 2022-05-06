@@ -1009,33 +1009,33 @@ using thumbLutEntry = void (ARM7TDMI::*)(u16);
 
 template <std::size_t lutFillIndex>
 constexpr lutEntry decode() {
-	if ((lutFillIndex & armMultiplyMask) == armMultiplyBits) {
+	if constexpr ((lutFillIndex & armMultiplyMask) == armMultiplyBits) {
 		return &ARM7TDMI::multiply<(bool)(lutFillIndex & 0b0000'0010'0000), (bool)(lutFillIndex & 0b0000'0001'0000)>;
-	} else if ((lutFillIndex & armMultiplyLongMask) == armMultiplyLongBits) {
+	} else if constexpr ((lutFillIndex & armMultiplyLongMask) == armMultiplyLongBits) {
 		return &ARM7TDMI::multiplyLong<(bool)(lutFillIndex & 0b0000'0100'0000), (bool)(lutFillIndex & 0b0000'0010'0000), (bool)(lutFillIndex & 0b0000'0001'0000)>;
-	} else if ((lutFillIndex & armPsrLoadMask) == armPsrLoadBits) {
+	} else if constexpr ((lutFillIndex & armPsrLoadMask) == armPsrLoadBits) {
 		return &ARM7TDMI::psrLoad<(bool)(lutFillIndex & 0b0000'0100'0000)>;
-	} else if ((lutFillIndex & armPsrStoreRegMask) == armPsrStoreRegBits) {
+	} else if constexpr ((lutFillIndex & armPsrStoreRegMask) == armPsrStoreRegBits) {
 		return &ARM7TDMI::psrStoreReg<(bool)(lutFillIndex & 0b0000'0100'0000)>;
-	} else if ((lutFillIndex & armPsrStoreImmediateMask) == armPsrStoreImmediateBits) {
+	} else if constexpr ((lutFillIndex & armPsrStoreImmediateMask) == armPsrStoreImmediateBits) {
 		return &ARM7TDMI::psrStoreImmediate<(bool)(lutFillIndex & 0b0000'0100'0000)>;
-	} else if ((lutFillIndex & armSingleDataSwapMask) == armSingleDataSwapBits) {
+	} else if constexpr ((lutFillIndex & armSingleDataSwapMask) == armSingleDataSwapBits) {
 		return &ARM7TDMI::singleDataSwap<(bool)(lutFillIndex & 0b0000'0100'0000)>;
-	} else if ((lutFillIndex & armBranchExchangeMask) == armBranchExchangeBits) {
+	} else if constexpr ((lutFillIndex & armBranchExchangeMask) == armBranchExchangeBits) {
 		return &ARM7TDMI::branchExchange;
-	} else if ((lutFillIndex & armHalfwordDataTransferMask) == armHalfwordDataTransferBits) {
+	} else if constexpr ((lutFillIndex & armHalfwordDataTransferMask) == armHalfwordDataTransferBits) {
 		return &ARM7TDMI::halfwordDataTransfer<(bool)(lutFillIndex & 0b0001'0000'0000), (bool)(lutFillIndex & 0b0000'1000'0000), (bool)(lutFillIndex & 0b0000'0100'0000), (bool)(lutFillIndex & 0b0000'0010'0000), (bool)(lutFillIndex & 0b0000'0001'0000), ((lutFillIndex & 0b0000'0000'0110) >> 1)>;
-	} else if ((lutFillIndex & armDataProcessingMask) == armDataProcessingBits) {
+	} else if constexpr ((lutFillIndex & armDataProcessingMask) == armDataProcessingBits) {
 		return &ARM7TDMI::dataProcessing<(bool)(lutFillIndex & 0b0010'0000'0000), ((lutFillIndex & 0b0001'1110'0000) >> 5), (bool)(lutFillIndex & 0b0000'0001'0000)>;
-	} else if ((lutFillIndex & armUndefinedMask) == armUndefinedBits) {
+	} else if constexpr ((lutFillIndex & armUndefinedMask) == armUndefinedBits) {
 		return &ARM7TDMI::undefined;
-	} else if ((lutFillIndex & armSingleDataTransferMask) == armSingleDataTransferBits) {
+	} else if constexpr ((lutFillIndex & armSingleDataTransferMask) == armSingleDataTransferBits) {
 		return &ARM7TDMI::singleDataTransfer<(bool)(lutFillIndex & 0b0010'0000'0000), (bool)(lutFillIndex & 0b0001'0000'0000), (bool)(lutFillIndex & 0b0000'1000'0000), (bool)(lutFillIndex & 0b0000'0100'0000), (bool)(lutFillIndex & 0b0000'0010'0000), (bool)(lutFillIndex & 0b0000'0001'0000)>;
-	} else if ((lutFillIndex & armBlockDataTransferMask) == armBlockDataTransferBits) {
+	} else if constexpr ((lutFillIndex & armBlockDataTransferMask) == armBlockDataTransferBits) {
 		return &ARM7TDMI::blockDataTransfer<(bool)(lutFillIndex & 0b0001'0000'0000), (bool)(lutFillIndex & 0b0000'1000'0000), (bool)(lutFillIndex & 0b0000'0100'0000), (bool)(lutFillIndex & 0b0000'0010'0000), (bool)(lutFillIndex & 0b0000'0001'0000)>;
-	} else if ((lutFillIndex & armBranchMask) == armBranchBits) {
+	} else if constexpr ((lutFillIndex & armBranchMask) == armBranchBits) {
 		return &ARM7TDMI::branch<(bool)(lutFillIndex & 0b0001'0000'0000)>;
-	} else if ((lutFillIndex & armSoftwareInterruptMask) == armSoftwareInterruptBits) {
+	} else if constexpr ((lutFillIndex & armSoftwareInterruptMask) == armSoftwareInterruptBits) {
 		return &ARM7TDMI::softwareInterrupt;
 	}
 
@@ -1633,46 +1633,46 @@ void ARM7TDMI::thumbLongBranchLink(u16 opcode) {
 
 template <std::size_t lutFillIndex>
 constexpr thumbLutEntry decodeThumb() {
-	if ((lutFillIndex & thumbAddSubtractMask) == thumbAddSubtractBits) {
+	if constexpr ((lutFillIndex & thumbAddSubtractMask) == thumbAddSubtractBits) {
 		return &ARM7TDMI::thumbAddSubtract<(bool)(lutFillIndex & 0b0000'0100'00), (bool)(lutFillIndex & 0b0000'0010'00), (lutFillIndex & 0b0000'0001'11)>;
-	} else if ((lutFillIndex & thumbMoveShiftedRegMask) == thumbMoveShiftedRegBits) {
+	} else if constexpr ((lutFillIndex & thumbMoveShiftedRegMask) == thumbMoveShiftedRegBits) {
 		static_assert((lutFillIndex & thumbMoveShiftedRegMask) == thumbMoveShiftedRegBits, "wtf");
 		static_assert((lutFillIndex & 0b1110'0000'00) == 0, "how?");
 		static_assert(((lutFillIndex & 0b0001'1000'00) >> 5) != 3, "ERROR");
 		return &ARM7TDMI::thumbMoveShiftedReg<((lutFillIndex & 0b0001'1000'00) >> 5), (lutFillIndex & 0b0000'0111'11)>;
-	} else if ((lutFillIndex & thumbAluImmediateMask) == thumbAluImmediateBits) {
+	} else if constexpr ((lutFillIndex & thumbAluImmediateMask) == thumbAluImmediateBits) {
 		return &ARM7TDMI::thumbAluImmediate<((lutFillIndex & 0b0001'1000'00) >> 5), ((lutFillIndex & 0b0000'0111'00) >> 2)>;
-	} else if ((lutFillIndex & thumbAluRegMask) == thumbAluRegBits) {
+	} else if constexpr ((lutFillIndex & thumbAluRegMask) == thumbAluRegBits) {
 		return &ARM7TDMI::thumbAluReg<(lutFillIndex & 0b0000'0011'11)>;
-	} else if ((lutFillIndex & thumbHighRegOperationMask) == thumbHighRegOperationBits) {
+	} else if constexpr ((lutFillIndex & thumbHighRegOperationMask) == thumbHighRegOperationBits) {
 		return &ARM7TDMI::thumbHighRegOperation<((lutFillIndex & 0b0000'0011'00) >> 2), (bool)(lutFillIndex & 0b0000'0000'10), (bool)(lutFillIndex & 0b0000'0000'01)>;
-	} else if ((lutFillIndex & thumbPcRelativeLoadMask) == thumbPcRelativeLoadBits) {
+	} else if constexpr ((lutFillIndex & thumbPcRelativeLoadMask) == thumbPcRelativeLoadBits) {
 		return &ARM7TDMI::thumbPcRelativeLoad<((lutFillIndex & 0b0000'0111'00) >> 2)>;
-	} else if ((lutFillIndex & thumbLoadStoreRegOffsetMask) == thumbLoadStoreRegOffsetBits) {
+	} else if constexpr ((lutFillIndex & thumbLoadStoreRegOffsetMask) == thumbLoadStoreRegOffsetBits) {
 		return &ARM7TDMI::thumbLoadStoreRegOffset<(bool)(lutFillIndex & 0b0000'1000'00), (bool)(lutFillIndex & 0b0000'0100'00), (lutFillIndex & 0b0000'0001'11)>;
-	} else if ((lutFillIndex & thumbLoadStoreSextMask) == thumbLoadStoreSextBits) {
+	} else if constexpr ((lutFillIndex & thumbLoadStoreSextMask) == thumbLoadStoreSextBits) {
 		return &ARM7TDMI::thumbLoadStoreSext<((lutFillIndex & 0b0000'1100'00) >> 4), (lutFillIndex & 0b0000'0001'11)>;
-	} else if ((lutFillIndex & thumbLoadStoreImmediateOffsetMask) == thumbLoadStoreImmediateOffsetBits) {
+	} else if constexpr ((lutFillIndex & thumbLoadStoreImmediateOffsetMask) == thumbLoadStoreImmediateOffsetBits) {
 		return &ARM7TDMI::thumbLoadStoreImmediateOffset<(bool)(lutFillIndex & 0b0001'0000'00), (bool)(lutFillIndex & 0b0000'1000'00), (lutFillIndex & 0b0000'0111'11)>;
-	} else if ((lutFillIndex & thumbLoadStoreHalfwordMask) == thumbLoadStoreHalfwordBits) {
+	} else if constexpr ((lutFillIndex & thumbLoadStoreHalfwordMask) == thumbLoadStoreHalfwordBits) {
 		return &ARM7TDMI::thumbLoadStoreHalfword<(bool)(lutFillIndex & 0b0000'1000'00), (lutFillIndex & 0b0000'0111'11)>;
-	} else if ((lutFillIndex & thumbSpRelativeLoadStoreMask) == thumbSpRelativeLoadStoreBits) {
+	} else if constexpr ((lutFillIndex & thumbSpRelativeLoadStoreMask) == thumbSpRelativeLoadStoreBits) {
 		return &ARM7TDMI::thumbSpRelativeLoadStore<(bool)(lutFillIndex & 0b0000'1000'00), ((lutFillIndex & 0b0000'0111'00) >> 2)>;
-	} else if ((lutFillIndex & thumbLoadAddressMask) == thumbLoadAddressBits) {
+	} else if constexpr ((lutFillIndex & thumbLoadAddressMask) == thumbLoadAddressBits) {
 		return &ARM7TDMI::thumbLoadAddress<(bool)(lutFillIndex & 0b0000'1000'00), ((lutFillIndex & 0b0000'0111'00) >> 2)>;
-	} else if ((lutFillIndex & thumbSpAddOffsetMask) == thumbSpAddOffsetBits) {
+	} else if constexpr ((lutFillIndex & thumbSpAddOffsetMask) == thumbSpAddOffsetBits) {
 		return &ARM7TDMI::thumbSpAddOffset<(bool)(lutFillIndex & 0b0000'0000'10)>;
-	} else if ((lutFillIndex & thumbPushPopRegistersMask) == thumbPushPopRegistersBits) {
+	} else if constexpr ((lutFillIndex & thumbPushPopRegistersMask) == thumbPushPopRegistersBits) {
 		return &ARM7TDMI::thumbPushPopRegisters<(bool)(lutFillIndex & 0b0000'1000'00), (bool)(lutFillIndex & 0b0000'0001'00)>;
-	} else if ((lutFillIndex & thumbMultipleLoadStoreMask) == thumbMultipleLoadStoreBits) {
+	} else if constexpr ((lutFillIndex & thumbMultipleLoadStoreMask) == thumbMultipleLoadStoreBits) {
 		return &ARM7TDMI::thumbMultipleLoadStore<(bool)(lutFillIndex & 0b0000'1000'00), ((lutFillIndex & 0b0000'0111'00) >> 2)>;
-	} else if ((lutFillIndex & thumbSoftwareInterruptMask) == thumbSoftwareInterruptBits) {
+	} else if constexpr ((lutFillIndex & thumbSoftwareInterruptMask) == thumbSoftwareInterruptBits) {
 		return &ARM7TDMI::thumbSoftwareInterrupt;
-	} else if ((lutFillIndex & thumbConditionalBranchMask) == thumbConditionalBranchBits) {
+	} else if constexpr ((lutFillIndex & thumbConditionalBranchMask) == thumbConditionalBranchBits) {
 		return &ARM7TDMI::thumbConditionalBranch<((lutFillIndex & 0b0000'1111'00) >> 2)>;
-	} else if ((lutFillIndex & thumbUnconditionalBranchMask) == thumbUnconditionalBranchBits) {
+	} else if constexpr ((lutFillIndex & thumbUnconditionalBranchMask) == thumbUnconditionalBranchBits) {
 		return &ARM7TDMI::thumbUnconditionalBranch;
-	} else if ((lutFillIndex & thumbLongBranchLinkMask) == thumbLongBranchLinkBits) {
+	} else if constexpr ((lutFillIndex & thumbLongBranchLinkMask) == thumbLongBranchLinkBits) {
 		return &ARM7TDMI::thumbLongBranchLink<(bool)(lutFillIndex & 0b0000'1000'00)>;
 	}
 
