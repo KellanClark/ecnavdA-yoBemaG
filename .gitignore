@@ -32,6 +32,7 @@
 *.app
 
 # Misc.
+*.ini
 build/
 cmake-build*/
 .cache/

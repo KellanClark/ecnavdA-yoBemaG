@@ -49,7 +49,7 @@ void ARM7TDMI::resetARM7TDMI() {
 }
 
 void ARM7TDMI::cycle() {
-	if (processIrq) { // Service interrupt
+	if (processIrq) { [[unlikely]] // Service interrupt
 		serviceInterrupt();
 	} else {
 		if (reg.thumbMode) {
@@ -71,7 +71,7 @@ void ARM7TDMI::cycle() {
 	//	printf("0x%08X\n", reg.R[1]);
 }
 
-inline bool ARM7TDMI::checkCondition(int conditionCode) {
+bool ARM7TDMI::checkCondition(int conditionCode) {
 	switch (conditionCode) {
 	case 0x0: return reg.flagZ;
 	case 0x1: return !reg.flagZ;
@@ -94,6 +94,7 @@ inline bool ARM7TDMI::checkCondition(int conditionCode) {
 		return false;
 	}
 }
+
 void ARM7TDMI::serviceInterrupt() {
 	processIrq = false;
 
@@ -826,8 +827,9 @@ template <bool immediateOffset, bool prePostIndex, bool upDown, bool byteWord, b
 void ARM7TDMI::singleDataTransfer(u32 opcode) {
 	auto baseRegister = (opcode >> 16) & 0xF;
 	auto srcDestRegister = (opcode >> 12) & 0xF;
-	if ((baseRegister == 15) && writeBack)
-		unknownOpcodeArm(opcode, "r15 Operand With Writeback");
+	if constexpr (writeBack)
+		if (baseRegister == 15)
+			unknownOpcodeArm(opcode, "r15 Operand With Writeback");
 
 	u32 offset;
 	computeShift<true, immediateOffset>(opcode, &offset);

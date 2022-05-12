@@ -62,6 +62,7 @@ public:
 	int prefetchIndex;
 	int prefetchWaitstate;
 	int prefetchCycles;
+	int prefetchLastAddress;
 	void tickPrefetch(int cycles);
 	bool checkPrefetch(u32 address, bool sequential);
 

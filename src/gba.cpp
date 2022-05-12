@@ -233,16 +233,12 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 	u32 alignedAddress = address & ~(sizeof(T) - 1);
 	u32 offset;
 
-	sequential = sequential && !forceNonSequential && (address & 0x1FFFF);
-	forceNonSequential = false;
-
 	u32 val = openBus<T>(address);
 	switch (address >> 24) {
 	case 0x00: // BIOS
+		tickPrefetch(1);
 		if (address >= 0x4000)
 			break;
-
-		tickPrefetch(1);
 
 		if ((address <= 0x3FFF) && (cpu.reg.R[15] <= 0x3FFF)) {
 			if (cpu.hleBios) {
@@ -315,11 +311,12 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 		break;
 	case 0x08 ... 0x0D: { // ROM
 		int waitstate = (address >> 25) & 3;
+		sequential = sequential && !forceNonSequential && (address & 0x1FFFF);
 
 		if (prefetchBufferEnable) {
 			if constexpr (code) {
-				if (sequential && prefetchRunning) {
-					int halfwords = sizeof(T) / 2;
+				if (((prefetchLastAddress == alignedAddress) && (address & 0x1FFFF)) && prefetchRunning) {
+					const int halfwords = sizeof(T) / 2;
 
 					if (halfwords > prefetchIndex) {
 						cpu.tickScheduler(((halfwords - prefetchIndex) * (wsSequentialCycles[waitstate] + 1)) - prefetchCycles);
@@ -332,6 +329,7 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 						prefetchIndex -= halfwords;
 					}
 				} else {
+					while (prefetchCycles) tickPrefetch(1);
 					cpu.tickScheduler((sequential ? wsSequentialCycles[waitstate] : wsNonSequentialCycles[waitstate]) + ((sizeof(T) == 4) ? (wsSequentialCycles[waitstate] + 2) : 1));
 
 					prefetchRunning = true;
@@ -339,7 +337,11 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 					prefetchWaitstate = waitstate;
 					prefetchCycles = 0;
 				}
+
+				prefetchLastAddress = alignedAddress + sizeof(T);
 			} else {
+				//cpu.tickScheduler((wsSequentialCycles[waitstate]) - prefetchCycles);
+				//while (prefetchCycles) tickPrefetch(1);
 				cpu.tickScheduler((sequential ? wsSequentialCycles[waitstate] : wsNonSequentialCycles[waitstate]) + ((sizeof(T) == 4) ? (wsSequentialCycles[waitstate] + 2) : 1));
 
 				prefetchRunning = false;
@@ -421,6 +423,7 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 			val = (val << ((4 - (address & 3)) * 8)) | (val >> ((address & 3) * 8));
 	}
 
+	forceNonSequential = false;
 	return val;
 }
 template u32 GameBoyAdvance::read<u8, false>(u32, bool);
@@ -885,8 +888,7 @@ void GameBoyAdvance::writeIO(u32 address, u8 value) {
 }
 
 void GameBoyAdvance::internalCycle(int cycles) {
-	if (!prefetchBufferEnable)
-		forceNonSequential = true;
+	forceNonSequential = true;
 
 	tickPrefetch(cycles);
 }
@@ -902,9 +904,9 @@ void GameBoyAdvance::tickPrefetch(int cycles) {
 		prefetchCycles %= (wsSequentialCycles[prefetchWaitstate] + 1);
 
 		if (prefetchIndex > 8) {
-			//prefetchRunning = false;
-			//prefetchIndex = 0;
-			prefetchIndex = 8;
+			prefetchRunning = false;
+			prefetchIndex = 0;
+			//prefetchIndex = 8;
 			prefetchCycles = 0;
 		}
 	}
