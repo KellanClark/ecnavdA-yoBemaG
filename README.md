@@ -12,9 +12,14 @@ A WIP Game Boy Advance emulator.
 * [HLE BIOS] Non-IRQ exception handling
 * [HLE BIOS] SWIs 0x10-0x2A
 
-## Requirements
-* Any modern 64 bit linux distribution
-* `cmake`, `make`, SDL2 development libraries, Gtk3 development libraries (for `nativefiledialog-extended`), and a compiler that supports C++20
+## Build Requirements
+* Any modern 64 bit Linux distribution or Windows
+* `cmake`, `make`, and SDL2 development libraries
+### Linux
+* `gcc` or `clang`
+* GTK3 development libraries (for `nativefiledialog-extended`)
+### Windows
+* Only `clang-cl` will work. No MSVC.
 
 ## Usage Instructions
 Download the executable from Releases or compile:
