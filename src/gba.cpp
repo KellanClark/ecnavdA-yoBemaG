@@ -355,7 +355,7 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 		std::memcpy(&val, (u8*)romBuff.data() + (alignedAddress & 0x1FFFFFF), sizeof(T));
 		} break;
 	case 0x0E ... 0x0F:
-		tickPrefetch(1);
+		tickPrefetch(sramCycles);
 
 		if (saveType == SRAM_32K) {
 			val = sram[address & 0x7FFF];
@@ -697,7 +697,7 @@ void GameBoyAdvance::write(u32 address, T value, bool sequential) {
 		tickPrefetch((sequential ? wsSequentialCycles[waitstate] : wsNonSequentialCycles[waitstate]) + ((sizeof(T) == 4) ? wsSequentialCycles[waitstate] : 0));
 		} break;
 	case 0x0E ... 0x0F: // SRAM/Flash
-		tickPrefetch(1);
+		tickPrefetch(sramCycles);
 
 		if (saveType == SRAM_32K) {
 			sram[address & 0x7FFF] = (u8)value;
