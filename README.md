@@ -3,7 +3,7 @@ A WIP Game Boy Advance emulator.
 
 ## Major missing features
 * Proper transparency and alpha blending
-* Prefetch buffer
+* Correct prefetch buffer
 * EEPROM saves
 * All extra cartridge hardware
 * Serial
@@ -14,7 +14,7 @@ A WIP Game Boy Advance emulator.
 
 ## Build Requirements
 * Any modern 64 bit Linux distribution or Windows
-* `cmake`, `make`, and SDL2>=20.018 development libraries
+* `cmake`, `make`, and SDL2>=20.0.18 development libraries
 ### Linux
 * `gcc` or `clang`
 * GTK3 development libraries (for `nativefiledialog-extended`)
