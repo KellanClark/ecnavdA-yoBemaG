@@ -14,7 +14,7 @@ A WIP Game Boy Advance emulator.
 
 ## Build Requirements
 * Any modern 64 bit Linux distribution or Windows
-* `cmake`, `make`, and SDL2 development libraries
+* `cmake`, `make`, and SDL2>=20.018 development libraries
 ### Linux
 * `gcc` or `clang`
 * GTK3 development libraries (for `nativefiledialog-extended`)
