@@ -29,7 +29,6 @@ void GameBoyAdvance::reset() {
 	POSTFLG = false;
 
 	WAITCNT = 0;
-	InternalMemoryControl = 0x0D000000;
 	sramCycles = 5; // TODO: Not used
 	wsNonSequentialCycles[0] = 5;
 	wsSequentialCycles[0] = 3;
@@ -37,7 +36,8 @@ void GameBoyAdvance::reset() {
 	wsSequentialCycles[1] = 5;
 	wsNonSequentialCycles[2] = 5;
 	wsSequentialCycles[2] = 9;
-	ewramCycles = 3; // TODO: Not used
+	InternalMemoryControl = 0x0D000000;
+	ewramCycles = 3;
 
 	cpu.currentTime = 0;
 	cpu.eventQueue = {};
@@ -253,9 +253,9 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 		break;
 	case 0x02: // EWRAM
 		if constexpr (sizeof(T) == 4) {
-			tickPrefetch(6);
+			tickPrefetch(ewramCycles * 2);
 		} else {
-			tickPrefetch(3);
+			tickPrefetch(ewramCycles);
 		}
 
 		std::memcpy(&val, &ewram[0] + (alignedAddress & 0x3FFFF), sizeof(T));
@@ -622,9 +622,9 @@ void GameBoyAdvance::write(u32 address, T value, bool sequential) {
 	switch (address >> 24) {
 	case 0x02: // EWRAM
 		if constexpr (sizeof(T) == 4) {
-			tickPrefetch(6);
+			tickPrefetch(ewramCycles * 2);
 		} else {
-			tickPrefetch(3);
+			tickPrefetch(ewramCycles);
 		}
 
 		std::memcpy(&ewram[0] + (alignedAddress & 0x3FFFF), &value, sizeof(T));
