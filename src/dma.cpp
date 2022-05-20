@@ -87,6 +87,8 @@ void GBADMA::checkDma() {
 template <int channel>
 void GBADMA::doDma() {
 	bus.internalCycle(1);
+	//bus.forceNonSequential = true;
+	//bus.cpu.tickScheduler(1);
 
 	u32 *sourceAddress;
 	u32 *destinationAddress;
@@ -228,6 +230,8 @@ void GBADMA::doDma() {
 
 	dmaEnd();
 	bus.internalCycle(1);
+	//bus.forceNonSequential = true;
+	//bus.cpu.tickScheduler(1);
 }
 
 void GBADMA::dmaEnd() {

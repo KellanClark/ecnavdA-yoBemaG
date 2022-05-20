@@ -324,7 +324,7 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 						prefetchIndex = 0;
 						prefetchCycles = 0;
 					} else {
-						cpu.tickScheduler(halfwords);
+						cpu.tickScheduler(1);
 
 						prefetchIndex -= halfwords;
 					}
@@ -340,8 +340,9 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 
 				prefetchLastAddress = alignedAddress + sizeof(T);
 			} else {
-				if ((dma.currentDma == -1) && prefetchRunning && ((wsSequentialCycles[prefetchWaitstate] - prefetchCycles) == 1))
+				if (prefetchRunning && ((wsSequentialCycles[prefetchWaitstate] - prefetchCycles) == 1))
 					cpu.tickScheduler(1);
+
 				prefetchRunning = false;
 				prefetchIndex = 0;
 				prefetchCycles = 0;
@@ -355,11 +356,15 @@ u32 GameBoyAdvance::read(u32 address, bool sequential) {
 		std::memcpy(&val, (u8*)romBuff.data() + (alignedAddress & 0x1FFFFFF), sizeof(T));
 		} break;
 	case 0x0E ... 0x0F:
-		if ((dma.currentDma == -1) && prefetchRunning && ((wsSequentialCycles[prefetchWaitstate] - prefetchCycles) == 1))
-			cpu.tickScheduler(1);
-		prefetchRunning = false;
-		prefetchIndex = 0;
-		prefetchCycles = 0;
+		if (prefetchRunning) {
+			if (prefetchRunning && ((wsSequentialCycles[prefetchWaitstate] - prefetchCycles) == 1)) [[unlikely]]
+				cpu.tickScheduler(1);
+
+			prefetchRunning = false;
+			prefetchIndex = 0;
+			prefetchCycles = 0;
+		}
+
 		cpu.tickScheduler(sramCycles);
 
 		if (saveType == SRAM_32K) {
@@ -699,19 +704,28 @@ void GameBoyAdvance::write(u32 address, T value, bool sequential) {
 		break;
 	case 0x08 ... 0x0D: { // ROM
 		int waitstate = (address >> 25) & 3;
-		if ((dma.currentDma == -1) && prefetchRunning && ((wsSequentialCycles[prefetchWaitstate] - prefetchCycles) == 1))
-			cpu.tickScheduler(1);
-		prefetchRunning = false;
-		prefetchIndex = 0;
-		prefetchCycles = 0;
+
+		if (prefetchRunning) {
+			if (prefetchRunning && ((wsSequentialCycles[prefetchWaitstate] - prefetchCycles) == 1)) [[unlikely]]
+					cpu.tickScheduler(1);
+
+			prefetchRunning = false;
+			prefetchIndex = 0;
+			prefetchCycles = 0;
+		}
+
 		cpu.tickScheduler((sequential ? wsSequentialCycles[waitstate] : wsNonSequentialCycles[waitstate]) + ((sizeof(T) == 4) ? wsSequentialCycles[waitstate] : 0));
 		} break;
 	case 0x0E ... 0x0F: // SRAM/Flash
-		if ((dma.currentDma == -1) && prefetchRunning && ((wsSequentialCycles[prefetchWaitstate] - prefetchCycles) == 1))
-			cpu.tickScheduler(1);
-		prefetchRunning = false;
-		prefetchIndex = 0;
-		prefetchCycles = 0;
+		if (prefetchRunning) {
+			if (prefetchRunning && ((wsSequentialCycles[prefetchWaitstate] - prefetchCycles) == 1)) [[unlikely]]
+					cpu.tickScheduler(1);
+
+			prefetchRunning = false;
+			prefetchIndex = 0;
+			prefetchCycles = 0;
+		}
+
 		cpu.tickScheduler(sramCycles);
 
 		if (saveType == SRAM_32K) {
@@ -865,16 +879,16 @@ void GameBoyAdvance::writeIO(u32 address, u8 value) {
 			wsSequentialCycles[1] = ws1SequentialControl ? 2 : 5;
 			break;
 		case 0x205:
-			WAITCNT = (WAITCNT & 0x00FF) | ((value & 0x5F) << 8);
-
-			wsNonSequentialCycles[2] = waitCycleTable[ws2NonSequentialControl];
-			wsSequentialCycles[2] = ws2SequentialControl ? 2 : 9;
-
 			if (prefetchBufferEnable && !(value & 0x40)) {
 				prefetchRunning = false;
 				prefetchIndex = 0;
 				prefetchCycles = 0;
 			}
+
+			WAITCNT = (WAITCNT & 0x00FF) | ((value & 0x5F) << 8);
+
+			wsNonSequentialCycles[2] = waitCycleTable[ws2NonSequentialControl];
+			wsSequentialCycles[2] = ws2SequentialControl ? 2 : 9;
 			break;
 		case 0x208:
 			cpu.IME = (bool)(value & 1);
