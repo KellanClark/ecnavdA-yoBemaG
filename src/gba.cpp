@@ -648,14 +648,14 @@ void GameBoyAdvance::write(u32 address, T value, bool sequential) {
 		tickPrefetch(1);
 
 		if constexpr (sizeof(T) == 4) {
-			writeIO((address & ~3) | 0, (u8)value);
-			writeIO((address & ~3) | 1, (u8)(value >> 8));
-			writeIO((address & ~3) | 2, (u8)(value >> 16));
-			writeIO((address & ~3) | 3, (u8)(value >> 24));
+			writeIO(alignedAddress | 0, (u8)value);
+			writeIO(alignedAddress | 1, (u8)(value >> 8));
+			writeIO(alignedAddress | 2, (u8)(value >> 16));
+			writeIO(alignedAddress | 3, (u8)(value >> 24));
 			return;
 		} else if constexpr (sizeof(T) == 2) {
-			writeIO((address & ~1) | 0, (u8)value);
-			writeIO((address & ~1) | 1, (u8)(value >> 8));
+			writeIO(alignedAddress | 0, (u8)value);
+			writeIO(alignedAddress | 1, (u8)(value >> 8));
 			return;
 		} else if (sizeof(T) == 1) {
 			writeIO(address, value);
