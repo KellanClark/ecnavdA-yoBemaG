@@ -10,7 +10,6 @@
 #include "arm7tdmi.hpp"
 #include "hlebios.hpp"
 
-class Scheduler;
 class GBACPU : public ARM7TDMI {
 public:
 	bool hleBios;
