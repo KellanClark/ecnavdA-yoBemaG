@@ -57,7 +57,8 @@ void GBAPPU::lineStart() {
 
 	hBlankFlag = false;
 	++currentScanline;
-	if (currentScanline == 160) { // VBlank
+	switch (currentScanline) {
+	case 160: // VBlank
 		updateScreen = true;
 		vBlankFlag = true;
 
@@ -65,15 +66,19 @@ void GBAPPU::lineStart() {
 			bus.cpu.requestInterrupt(GBACPU::IRQ_VBLANK);
 
 		bus.dma.onVBlank();
-	} else if (currentScanline == 228) { // Start of frame
+		break;
+	case 227: // Hardware bug
+		vBlankFlag = false;
+		break;
+	case 228: // Start of frame
 		++frameCounter;
 		currentScanline = 0;
-		vBlankFlag = false;
 
 		internalBG2X = (float)((i32)(BG2X << 4) >> 4) / 256;
 		internalBG2Y = (float)((i32)(BG2Y << 4) >> 4) / 256;
 		internalBG3X = (float)((i32)(BG3X << 4) >> 4) / 256;
 		internalBG3Y = (float)((i32)(BG3Y << 4) >> 4) / 256;
+		break;
 	}
 
 	if (vCountSetting == currentScanline) {
@@ -102,14 +107,12 @@ void GBAPPU::hBlankEvent(void *object) {
 void GBAPPU::hBlank() {
 	bus.cpu.addEvent(1232, hBlankEvent, this);
 
-	if (currentScanline < 160)
-		drawScanline();
-
 	hBlankFlag = true;
 	if (hBlankIrqEnable)
 		bus.cpu.requestInterrupt(GBACPU::IRQ_HBLANK);
 
-	if (!vBlankFlag)
+	if (currentScanline < 160)
+		drawScanline();
 		bus.dma.onHBlank();
 }
 
